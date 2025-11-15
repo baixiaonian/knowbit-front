@@ -3,11 +3,7 @@
     <nav class="nav-content">
       <div class="nav-header">
         <div class="app-logo">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
+          <img src="/knowbit_logo.png" alt="KnowBit Logo" class="logo-image" />
         </div>
         <h1 class="app-title">知 粒</h1>
       </div>
@@ -634,11 +630,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 8px;
-  color: white;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+}
+
+.app-logo .logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .app-logo svg {

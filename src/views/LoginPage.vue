@@ -4,38 +4,25 @@
       <!-- Logo和标题 -->
       <div class="login-header">
         <div class="logo">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
+          <img src="/knowbit_logo.png" alt="KnowBit Logo" class="logo-image" />
         </div>
-        <h1>AI写作助手</h1>
-        <p class="subtitle">智能写作，让创作更简单</p>
+        <h1>知 粒</h1>
+        <p class="subtitle">www.knowbit.cn</p>
       </div>
 
       <!-- 登录表单 -->
       <div class="login-form">
         <!-- 公众号二维码提示 -->
         <div class="qr-code-section">
-          <div class="qr-code-placeholder">
-            <svg width="200" height="200" viewBox="0 0 200 200" class="qr-icon">
-              <rect x="10" y="10" width="30" height="30" fill="currentColor"/>
-              <rect x="50" y="10" width="10" height="10" fill="currentColor"/>
-              <rect x="70" y="10" width="10" height="10" fill="currentColor"/>
-              <rect x="90" y="10" width="30" height="30" fill="currentColor"/>
-              <rect x="10" y="50" width="10" height="10" fill="currentColor"/>
-              <rect x="30" y="50" width="50" height="50" fill="currentColor"/>
-              <rect x="90" y="50" width="10" height="10" fill="currentColor"/>
-              <rect x="30" y="110" width="10" height="10" fill="currentColor"/>
-              <rect x="50" y="110" width="30" height="30" fill="currentColor"/>
-              <rect x="90" y="110" width="10" height="10" fill="currentColor"/>
-              <rect x="10" y="150" width="30" height="30" fill="currentColor"/>
-              <rect x="50" y="150" width="10" height="10" fill="currentColor"/>
-              <rect x="70" y="150" width="10" height="10" fill="currentColor"/>
-              <rect x="90" y="150" width="30" height="30" fill="currentColor"/>
-            </svg>
+          <div class="qr-code-container">
+            <img 
+              src="/wechat_login.jpg" 
+              alt="微信公众号二维码"
+              class="qr-code-image"
+            />
           </div>
           <p class="instruction">
-            <strong>请关注公众号</strong>
+            <strong>请关注公众号【白小年1999】</strong>
           </p>
           <p class="hint">
             在公众号内发送 <span class="code">666</span> 获取登录验证码
@@ -145,14 +132,15 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #ffffff;
   padding: 20px;
 }
 
 .login-container {
   background: white;
   border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e7eb;
   width: 100%;
   max-width: 450px;
   padding: 40px;
@@ -176,15 +164,19 @@ onMounted(() => {
 }
 
 .logo {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 16px;
+  width: 100px;
+  height: 100px;
+  margin: 0 auto 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  overflow: hidden;
+}
+
+.logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .login-header h1 {
@@ -206,19 +198,30 @@ onMounted(() => {
 .qr-code-section {
   margin-bottom: 32px;
   padding: 24px;
-  background: #f9fafb;
+  background: #fafbfc;
   border-radius: 12px;
   text-align: center;
+  border: 1px solid #f0f1f3;
 }
 
-.qr-code-placeholder {
-  margin-bottom: 16px;
-  color: #9ca3af;
+.qr-code-container {
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-.qr-icon {
-  display: block;
-  margin: 0 auto;
+.qr-code-image {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  object-fit: cover;
 }
 
 .instruction {
@@ -377,8 +380,17 @@ onMounted(() => {
     font-size: 24px;
   }
 
-  .qr-code-placeholder {
-    margin-bottom: 12px;
+  .qr-code-section {
+    padding: 20px;
+  }
+
+  .qr-code-container {
+    margin-bottom: 16px;
+    padding: 12px;
+  }
+
+  .qr-code-image {
+    max-width: 240px;
   }
 
   .code-input {
