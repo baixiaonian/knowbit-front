@@ -5,8 +5,10 @@
         level === 0 ? 'nav-item' : ['nav-item', 'sub-item'],
         { 
           'folder-item': isFolder, 
+          'document-item': !isFolder,
           expanded: item.expanded,
-          'active-document': item.isActive && !isFolder
+          'active-document': item.isActive && !isFolder,
+          'menu-open': item.showEditMenu || item.showFolderAddMenu
         }
       ]"
       :style="itemStyle"
@@ -311,10 +313,10 @@ const actionsStyle = computed(() => ({
   right: '24px',
   top: '50%',
   transform: 'translateY(-50%)',
-  background: 'white',
   paddingLeft: '10px',
   height: '100%',
-  zIndex: '1000'
+  zIndex: '1000',
+  background: 'transparent'
 }))
 
 const buttonStyle = computed(() => ({
@@ -361,12 +363,36 @@ const handleItemClick = () => {
 <style scoped>
 .nav-item {
   position: relative;
-  transition: all 0.2s;
+  transition: color 0.2s;
+  z-index: 0;
+  overflow: visible;
 }
 
-.nav-item:hover {
-  background-color: #f5f7fa;
+.nav-item.menu-open {
+  z-index: 100;
+}
+
+.nav-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: transparent;
+  transition: background-color 0.2s;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.nav-item > * {
+  position: relative;
+  z-index: 1;
+}
+
+.document-item:hover {
   color: #303133;
+}
+
+.document-item:hover::before {
+  background-color: #f5f7fa;
 }
 
 .folder-item.expanded {
@@ -377,8 +403,11 @@ const handleItemClick = () => {
   position: relative;
 }
 
+.active-document::before {
+  background-color: #ecf5ff;
+}
+
 .active-document {
-  background-color: #ecf5ff !important;
   color: #409eff !important;
   border-left: 3px solid #409eff;
 }
@@ -445,7 +474,7 @@ const handleItemClick = () => {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: white;
+  background: transparent;
   padding-left: 10px;
   height: 100%;
   z-index: 1000;
@@ -469,7 +498,13 @@ const handleItemClick = () => {
 
 .edit-btn:hover,
 .add-btn:hover {
-  background: #f5f7fa;
+  background: transparent;
+  color: #409eff;
+}
+
+.active-document .edit-btn,
+.active-document .add-btn {
+  background: transparent;
   color: #409eff;
 }
 

@@ -451,6 +451,23 @@ import { Underline } from '@tiptap/extension-underline'
 import { Strike } from '@tiptap/extension-strike'
 import { TextStyle, FontSize } from '@tiptap/extension-text-style'
 
+const CustomHeading = Heading.extend({
+  addAttributes() {
+    return {
+      id: {
+        default: null,
+        parseHTML: element => element.getAttribute('id'),
+        renderHTML: attributes => {
+          if (!attributes.id) {
+            return {}
+          }
+          return { id: attributes.id }
+        }
+      }
+    }
+  }
+})
+
 // Props
 const props = defineProps({
   document: {
@@ -512,7 +529,7 @@ watch(() => props.document, (newDoc, oldDoc) => {
       if (editor.value) {
         editor.value.commands.setContent(newContent, false)
         // 更新大纲
-        updateOutline(newContent)
+        updateOutline()
         // 应用默认字体大小并设置光标位置
         nextTick(() => {
           if (editor.value) {
@@ -592,7 +609,7 @@ onMounted(() => {
         underline: false, // 禁用默认的underline，使用自定义的
         strike: false, // 禁用默认的strike，使用自定义的
       }),
-      Heading.configure({
+      CustomHeading.configure({
         levels: [1, 2, 3, 4, 5, 6],
       }),
       TextStyle,
@@ -674,7 +691,7 @@ onMounted(() => {
   
   // 初始化大纲
   if (initialContent) {
-    updateOutline(initialContent)
+    updateOutline()
   }
   
   // 应用默认字体大小并设置光标位置
@@ -759,7 +776,7 @@ const handleContentChange = (content) => {
   saveStatus.value = 'unsaved'
   
   // 立即更新大纲
-  updateOutline(content)
+  updateOutline()
   
   // 防抖更新文档
   debouncedUpdateDocument(content)
@@ -1047,36 +1064,48 @@ const insertHorizontalRule = () => {
 }
 
 // 大纲相关方法
-const updateOutline = (content) => {
-  if (!content) {
+const updateOutline = () => {
+  if (!editor.value) {
     outlineItems.value = []
     return
   }
   
-  // 解析HTML内容，提取标题
-  const tempDiv = document.createElement('div')
-  tempDiv.innerHTML = content
-  
-  const headings = tempDiv.querySelectorAll('h1, h2, h3, h4, h5, h6')
   const outline = []
-  
-  headings.forEach((heading, index) => {
-    const level = parseInt(heading.tagName.charAt(1))
-    const text = heading.textContent.trim()
-    const id = `heading-${index}`
-    
-    // 给标题添加id属性，用于跳转
-    if (!heading.id) {
-      heading.id = id
+  const transaction = editor.value.state.tr
+
+  editor.value.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'heading') {
+      return
+    }
+
+    const text = node.textContent.trim()
+    if (!text) {
+      return
+    }
+
+    const level = node.attrs.level || 1
+    let id = node.attrs.id
+
+    if (!id) {
+      id = `heading-${pos}`
+      transaction.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        id
+      })
     }
     
     outline.push({
-      id: heading.id || id,
+      id,
       level,
       text,
-      tagName: heading.tagName.toLowerCase()
+      tagName: `h${level}`,
+      pos
     })
   })
+
+  if (transaction.docChanged) {
+    editor.value.view.dispatch(transaction)
+  }
   
   outlineItems.value = outline
 }
@@ -1084,21 +1113,24 @@ const updateOutline = (content) => {
 const jumpToHeading = (headingId) => {
   if (!editor.value) return
   
-  // 在编辑器中查找对应的标题元素
-  const editorContent = editor.value.view.dom
-  const heading = editorContent.querySelector(`#${headingId}`)
-  
-  if (heading) {
-    // 滚动到标题位置
-    heading.scrollIntoView({ 
+  const targetHeading = outlineItems.value.find(item => item.id === headingId)
+  if (!targetHeading) return
+
+  const { pos } = targetHeading
+  const resolvedPos = Math.min(pos + 1, editor.value.state.doc.content.size)
+
+  editor.value.chain().setTextSelection(resolvedPos).focus().run()
+
+  const headingDom = editor.value.view.nodeDOM(pos)
+  if (headingDom instanceof HTMLElement) {
+    headingDom.scrollIntoView({
       behavior: 'smooth', 
       block: 'center' 
     })
     
-    // 高亮显示
-    heading.style.backgroundColor = '#fff3cd'
+    headingDom.classList.add('outline-highlight')
     setTimeout(() => {
-      heading.style.backgroundColor = ''
+      headingDom.classList.remove('outline-highlight')
     }, 2000)
   }
 }
@@ -2088,7 +2120,7 @@ onUnmounted(() => {
   overflow-x: auto;
   width: 100%;
   position: relative;
-  z-index: 10001;
+  z-index: 10;
 }
 
 /* 标题区域 */
@@ -2339,6 +2371,11 @@ onUnmounted(() => {
   padding: 0 24px 24px 24px;
   overflow-y: auto;
   background: white;
+}
+
+.outline-highlight {
+  background-color: #fff3cd;
+  transition: background-color 0.6s ease;
 }
 
 /* 编辑器滚动条样式 */

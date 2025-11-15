@@ -21,7 +21,6 @@
         :user="currentUser"
         @search="handleSearch"
         @personal-center="handlePersonalCenter"
-        @settings="handleSettings"
         @logout="handleLogout"
       />
       
@@ -72,11 +71,6 @@ const handleSearch = (query) => {
 const handlePersonalCenter = () => {
   console.log('打开个人中心')
   // 这里可以添加打开个人中心的逻辑
-}
-
-const handleSettings = () => {
-  console.log('打开设置')
-  // 这里可以添加打开设置的逻辑
 }
 
 const handleLogout = () => {

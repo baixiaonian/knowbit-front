@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import DiffComponent from './DiffComponent.vue'
+import { formatMarkdownToHtml } from '../utils/markdownFormatter.js'
 
 export const DiffNode = Node.create({
   name: 'diffNode',
@@ -106,42 +107,44 @@ export const DiffNode = Node.create({
           if (node.type.name === 'diffNode' && node.attrs.diffId === diffId) {
             const aiText = node.attrs.aiText
             const originalMarks = node.attrs.originalMarks || []
+            const insertPos = pos
             
             // 删除diff节点
             commands.deleteRange({ from: pos, to: pos + node.nodeSize })
             
-            // 构建带格式的内容对象
-            let contentWithMarks = aiText
-            let marks = []
-            
-            // 收集所有格式标记
-            originalMarks.forEach(mark => {
-              if (mark.type === 'textStyle' && mark.attrs) {
-                marks.push({
-                  type: 'textStyle',
-                  attrs: mark.attrs
-                })
-              } else if (mark.type === 'bold') {
-                marks.push({ type: 'bold' })
-              } else if (mark.type === 'italic') {
-                marks.push({ type: 'italic' })
-              } else if (mark.type === 'underline') {
-                marks.push({ type: 'underline' })
-              } else if (mark.type === 'strike') {
-                marks.push({ type: 'strike' })
-              }
-            })
-            
-            // 如果有格式标记，创建带格式的文本节点
-            if (marks.length > 0) {
-              const textNode = {
-                type: 'text',
-                text: aiText,
-                marks: marks
-              }
-              commands.insertContentAt(pos, textNode)
+            const htmlContent = formatMarkdownToHtml(aiText)
+            if (htmlContent) {
+              commands.insertContentAt(insertPos, htmlContent)
             } else {
-              commands.insertContentAt(pos, aiText)
+              let marks = []
+              
+              originalMarks.forEach(mark => {
+                if (mark.type === 'textStyle' && mark.attrs) {
+                  marks.push({
+                    type: 'textStyle',
+                    attrs: mark.attrs
+                  })
+                } else if (mark.type === 'bold') {
+                  marks.push({ type: 'bold' })
+                } else if (mark.type === 'italic') {
+                  marks.push({ type: 'italic' })
+                } else if (mark.type === 'underline') {
+                  marks.push({ type: 'underline' })
+                } else if (mark.type === 'strike') {
+                  marks.push({ type: 'strike' })
+                }
+              })
+              
+              if (marks.length > 0) {
+                const textNode = {
+                  type: 'text',
+                  text: aiText,
+                  marks: marks
+                }
+                commands.insertContentAt(insertPos, textNode)
+              } else {
+                commands.insertContentAt(insertPos, aiText)
+              }
             }
             
             found = true

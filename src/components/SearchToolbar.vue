@@ -15,12 +15,6 @@
     </div>
     
     <div class="toolbar-actions">
-      <button class="icon-btn" title="设置" @click="handleSettings">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M12 1v6m0 6v6m5.2-13.2l-4.2 4.2m0 6l4.2 4.2M23 12h-6m-6 0H1m18.2 5.2l-4.2-4.2m0-6l-4.2-4.2"></path>
-        </svg>
-      </button>
       <div class="user-menu" ref="userMenuRef">
         <button class="user-avatar" @click.stop="toggleUserMenu" :title="userTooltip">
           <img v-if="userAvatar" :src="userAvatar" alt="user avatar" />
@@ -57,7 +51,7 @@ const isUserMenuOpen = ref(false)
 const userMenuRef = ref(null)
 
 // 事件定义
-const emit = defineEmits(['search', 'personal-center', 'settings', 'logout'])
+const emit = defineEmits(['search', 'personal-center', 'logout'])
 
 // 搜索处理
 const handleSearch = () => {
@@ -66,11 +60,6 @@ const handleSearch = () => {
 
 const handleSearchEnter = () => {
   emit('search', searchQuery.value)
-}
-
-// 设置处理
-const handleSettings = () => {
-  emit('settings')
 }
 
 const toggleUserMenu = () => {
@@ -126,11 +115,13 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 18px 36px;
+  padding: 12px 28px;
   background: white;
   border-bottom: 1px solid #e4e7ed;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   flex-shrink: 0;
+  position: relative;
+  z-index: 100;
 }
 
 .search-bar {
@@ -141,7 +132,7 @@ onBeforeUnmount(() => {
 
 .search-bar input {
   width: 100%;
-  padding: 12px 18px 12px 48px;
+  padding: 10px 16px 10px 44px;
   border: 1px solid #e4e7ed;
   border-radius: 10px;
   font-size: 15px;
@@ -162,47 +153,24 @@ onBeforeUnmount(() => {
   top: 50%;
   transform: translateY(-50%);
   color: #909399;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
 }
 
 .toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
-}
-
-.icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: none;
-  background: transparent;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: #606266;
-}
-
-.icon-btn svg {
-  width: 22px;
-  height: 22px;
-}
-
-.icon-btn:hover {
-  background: #f5f7fa;
-  color: #303133;
+  gap: 12px;
 }
 
 .user-menu {
   position: relative;
+  z-index: 200;
 }
 
 .user-avatar {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: none;
   background: #eef2ff;
@@ -229,7 +197,7 @@ onBeforeUnmount(() => {
 
 .user-dropdown {
   position: absolute;
-  top: 54px;
+  top: 48px;
   right: 0;
   width: 200px;
   background: #fff;
@@ -240,7 +208,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  z-index: 20;
+  z-index: 210;
 }
 
 .user-info {
@@ -314,20 +282,10 @@ onBeforeUnmount(() => {
     font-size: 14px;
     padding: 10px 16px 10px 44px;
   }
-  
-  .icon-btn {
-    width: 40px;
-    height: 40px;
-  }
-  
-  .icon-btn svg {
-    width: 20px;
-    height: 20px;
-  }
 
   .user-avatar {
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
     font-size: 15px;
   }
 
