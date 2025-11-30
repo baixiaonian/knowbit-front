@@ -64,6 +64,18 @@ const request = async (url, options = {}) => {
     
     // 检查响应状态
     if (!response.ok) {
+      // 如果是401未授权错误，说明token过期或无效
+      if (response.status === 401) {
+        console.warn('Token已过期或无效，清除认证信息并跳转到登录页')
+        // 清除本地存储的认证信息
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('user_info')
+        // 跳转到登录页
+        window.location.href = '/login'
+        // 抛出错误，终止后续操作
+        throw new Error('登录已过期，请重新登录')
+      }
+      
       const errorData = await response.json().catch(() => ({
         code: response.status,
         message: response.statusText
@@ -719,6 +731,95 @@ export const uploadAPI = {
   }
 }
 
+// 智能体API
+export const agentAPI = {
+  // 调用写作智能体
+  executeWriter: async (userPrompt, documentId, sessionId, selectedDocumentIds, targetSelection) => {
+    const requestBody = {
+      userPrompt,
+      documentId: documentId || undefined,
+      sessionId: sessionId || undefined,
+      selectedDocumentIds: selectedDocumentIds || undefined,
+      targetSelection: targetSelection || undefined
+    }
+    
+    return await request('/agent/writer/execute', {
+      method: 'POST',
+      body: requestBody
+    })
+  },
+  
+  // 创建WebSocket连接订阅智能体事件
+  subscribeAgentEvents: (sessionId, onMessage, onError, onClose) => {
+    const token = getAuthToken()
+    // 根据协议，WebSocket URL应该是 ws://{host}/api/agent/ws/{sessionId}
+    // 从 API_BASE_URL 提取 host
+    const wsHost = API_BASE_URL.replace('https://', '').replace('http://', '').replace('/api', '')
+    const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws'
+    const wsUrl = `${wsProtocol}://${wsHost}/api/agent/ws/${sessionId}`
+    
+    console.log('创建WebSocket连接:', wsUrl)
+    
+    const ws = new WebSocket(wsUrl)
+    
+    ws.onopen = () => {
+      console.log('WebSocket连接已建立')
+    }
+    
+    ws.onmessage = (event) => {
+      console.log('WebSocket收到消息:', event.data)
+      try {
+        const message = JSON.parse(event.data)
+        onMessage && onMessage(message)
+      } catch (error) {
+        console.error('解析WebSocket消息失败:', error)
+        onError && onError(error)
+      }
+    }
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket错误:', error)
+      onError && onError(error)
+    }
+    
+    ws.onclose = () => {
+      console.log('WebSocket连接已关闭')
+      onClose && onClose()
+    }
+    
+    return ws
+  },
+  
+  // 获取历史会话列表
+  getSessions: async () => {
+    return await request('/agent/sessions', {
+      method: 'GET'
+    })
+  },
+  
+  // 获取会话详情
+  getSessionDetail: async (sessionId) => {
+    return await request(`/agent/sessions/${sessionId}`, {
+      method: 'GET'
+    })
+  },
+  
+  // 删除会话
+  deleteSession: async (sessionId) => {
+    return await request(`/agent/sessions/${sessionId}`, {
+      method: 'DELETE'
+    })
+  },
+  
+  // 更新会话标题
+  updateSessionTitle: async (sessionId, title) => {
+    return await request(`/agent/sessions/${sessionId}/title`, {
+      method: 'PUT',
+      body: { title }
+    })
+  }
+}
+
 // 导出所有API
 export default {
   auth: authAPI,
@@ -728,5 +829,6 @@ export default {
   categories: categoriesAPI,
   search: searchAPI,
   ai: aiAPI,
-  upload: uploadAPI
+  upload: uploadAPI,
+  agent: agentAPI
 }

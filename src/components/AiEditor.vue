@@ -364,6 +364,7 @@
             @insert-content="handleInsertContent"
             @apply-edit-suggestion="handleApplyEditSuggestion"
             @reject-edit-suggestion="handleRejectEditSuggestion"
+            @insert-diff-node="handleInsertDiffNode"
           />
         </div>
 
@@ -1238,6 +1239,178 @@ const handleRejectEditSuggestion = () => {
   clearDiffDisplay()
   editSuggestions.value = []
   isShowingSuggestions.value = false
+}
+
+// 处理插入DiffNode（来自智能体的paragraph_edit_instruction）
+const handleInsertDiffNode = (editData) => {
+  if (!editor.value) {
+    console.error('editor实例不存在')
+    return
+  }
+  
+  console.log('=== 开始处理插入DiffNode ===')
+  console.log('接收到的数据:', editData)
+  
+  const {
+    paragraphId,
+    operation,
+    originalContent,
+    newContent,
+    reasoning,
+    startOffset,
+    endOffset,
+    metadata
+  } = editData
+  
+  // 优先使用后端提供的originalContent作为原文
+  const originalText = originalContent || ''
+  console.log('使用的原文:', originalText)
+  console.log('AI生成的新内容:', newContent)
+  
+  // 查找包含该文本的节点位置
+  const { doc } = editor.value.state
+  let insertPosition = null
+  let targetNode = null
+  
+  // 如果有originalText，在文档中查找匹配的节点
+  if (originalText) {
+    doc.descendants((node, pos) => {
+      // 查找包含目标文本的段落或标题节点
+      if (['paragraph', 'heading'].includes(node.type.name)) {
+        const nodeText = node.textContent
+        
+        // 检查节点文本是否与原文匹配（精确匹配或包含关系）
+        if (nodeText && (
+          nodeText.trim() === originalText.trim() ||
+          nodeText.includes(originalText) ||
+          originalText.includes(nodeText)
+        )) {
+          console.log('找到匹配节点:', {
+            type: node.type.name,
+            pos,
+            text: nodeText.substring(0, 100)
+          })
+          insertPosition = pos
+          targetNode = node
+          return false // 停止遍历
+        }
+      }
+    })
+  }
+  
+  // 如果没找到匹配的节点，使用offset来定位
+  if (insertPosition === null && startOffset !== undefined && endOffset !== undefined) {
+    console.log('未通过文本匹配找到节点，尝试使用offset定位')
+    const htmlContent = editor.value.getHTML()
+    console.log('HTML内容总长度:', htmlContent.length)
+    console.log('startOffset:', startOffset, 'endOffset:', endOffset)
+    
+    const targetHtml = htmlContent.substring(startOffset, endOffset)
+    console.log('目标HTML片段:', targetHtml)
+    
+    // 从HTML中提取纯文本
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = targetHtml
+    const extractedText = tempDiv.textContent || tempDiv.innerText || ''
+    console.log('从HTML提取的文本:', extractedText)
+    
+    // 再次尝试在文档中查找
+    doc.descendants((node, pos) => {
+      if (['paragraph', 'heading'].includes(node.type.name)) {
+        const nodeText = node.textContent
+        if (nodeText && (nodeText.includes(extractedText) || extractedText.includes(nodeText))) {
+          console.log('通过offset提取的文本找到匹配节点:', {
+            type: node.type.name,
+            pos,
+            text: nodeText.substring(0, 100)
+          })
+          insertPosition = pos
+          targetNode = node
+          return false
+        }
+      }
+    })
+  }
+  
+  if (insertPosition === null) {
+    console.warn('未找到匹配的节点位置，将在文档末尾插入')
+    // 如果找不到精确匹配，在文档末尾插入
+    insertPosition = doc.content.size - 1
+  }
+  
+  console.log('找到插入位置:', insertPosition)
+  
+  // 收集目标节点的格式标记
+  let originalMarks = []
+  if (targetNode) {
+    targetNode.descendants((child) => {
+      if (child.marks && child.marks.length > 0) {
+        child.marks.forEach(mark => {
+          const markData = {
+            type: mark.type.name,
+            attrs: mark.attrs || {}
+          }
+          // 避免重复添加
+          if (!originalMarks.find(m => m.type === markData.type && JSON.stringify(m.attrs) === JSON.stringify(markData.attrs))) {
+            originalMarks.push(markData)
+          }
+        })
+      }
+    })
+  }
+  
+  console.log('收集到的格式标记:', originalMarks)
+  
+  // 根据operation类型决定如何插入DiffNode
+  console.log('执行操作类型:', operation)
+  
+  try {
+    if (operation === 'replace') {
+      // 替换操作：在目标位置插入DiffNode，使用后端提供的originalContent
+      console.log('执行replace操作')
+      editor.value.chain()
+        .focus()
+        .setTextSelection({ from: insertPosition, to: insertPosition + (targetNode?.nodeSize || 0) })
+        .insertDiff({
+          originalText: originalText,  // 直接使用后端提供的原文
+          aiText: newContent,
+          diffType: 'replace',
+          originalMarks: originalMarks
+        })
+        .run()
+    } else if (operation === 'delete') {
+      // 删除操作：标记为删除
+      console.log('执行delete操作')
+      editor.value.chain()
+        .focus()
+        .setTextSelection({ from: insertPosition, to: insertPosition + (targetNode?.nodeSize || 0) })
+        .insertDiff({
+          originalText: originalText,  // 直接使用后端提供的原文
+          aiText: '',
+          diffType: 'delete',
+          originalMarks: originalMarks
+        })
+        .run()
+    } else if (operation === 'insert_before' || operation === 'insert_after') {
+      // 插入操作
+      console.log('执行', operation, '操作')
+      const insertPos = operation === 'insert_before' ? insertPosition : (insertPosition + (targetNode?.nodeSize || 0))
+      editor.value.chain()
+        .focus()
+        .setTextSelection(insertPos)
+        .insertDiff({
+          originalText: '',
+          aiText: newContent,
+          diffType: 'insert',
+          originalMarks: []
+        })
+        .run()
+    }
+    
+    console.log('=== DiffNode插入完成 ===')
+  } catch (error) {
+    console.error('DiffNode插入失败:', error)
+  }
 }
 
 // 在编辑器中显示编辑建议
