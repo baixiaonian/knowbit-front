@@ -1,10 +1,10 @@
 <template>
-  <NodeViewWrapper class="ai-help-node-wrapper">
-    <div class="ai-help-container">
-      <!-- AI生成的内容显示区域 -->
-      <div class="ai-content-block">
-        <div v-if="aiContent && aiContent.trim()" class="ai-content" v-html="formattedContent"></div>
-        <div v-else class="ai-content-placeholder">
+  <NodeViewWrapper class="insert-node-wrapper">
+    <div class="insert-container">
+      <!-- AI新增内容显示区域 -->
+      <div class="insert-content-block">
+        <div v-if="aiContent && aiContent.trim()" class="insert-content" v-html="formattedContent"></div>
+        <div v-else class="insert-content-placeholder">
           <div class="loading-dots">
             <span></span>
             <span></span>
@@ -15,7 +15,7 @@
       </div>
       
       <!-- 操作按钮 -->
-      <div class="ai-help-actions">
+      <div class="insert-actions">
         <button class="action-btn accept-btn" @click="handleAccept">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <polyline points="20,6 9,17 4,12"></polyline>
@@ -46,59 +46,62 @@ const props = defineProps({
   }
 })
 
-// 从node属性中获取数据（使用computed确保响应式）
+// 从node属性中获取数据
 const aiContent = computed(() => {
   const content = props.node.attrs.aiContent || ''
   return content
 })
-const helpId = props.node.attrs.helpId || ''
+const insertId = props.node.attrs.insertId || ''
 const prompt = props.node.attrs.prompt || ''
 
-// 格式化AI内容（完整的markdown处理）
+// 格式化AI内容
 const formattedContent = computed(() => {
   return formatMarkdownToHtml(aiContent.value)
 })
 
-const emit = defineEmits(['accept', 'reject'])
-
 const handleAccept = () => {
-  // 通过全局事件发送接受信号
-  window.dispatchEvent(new CustomEvent('accept-ai-help', {
-    detail: { helpId: helpId }
+  window.dispatchEvent(new CustomEvent('accept-insert', {
+    detail: { insertId: insertId }
   }))
 }
 
 const handleReject = () => {
-  // 通过全局事件发送拒绝信号
-  window.dispatchEvent(new CustomEvent('reject-ai-help', {
-    detail: { helpId: helpId }
+  window.dispatchEvent(new CustomEvent('reject-insert', {
+    detail: { insertId: insertId }
   }))
 }
 </script>
 
 <style scoped>
-/* 确保AI帮写组件完全继承ProseMirror的样式 */
-.ai-help-node-wrapper {
-  display: inline;
-  position: relative;
-}
-
-.ai-help-container {
-  display: inline;
-}
-
-/* AI内容显示区域 - 浅绿色背景 */
-.ai-content-block {
+/* 插件容器 */
+.insert-node-wrapper {
   display: block;
+  position: relative;
   margin: 6px 0;
-  padding: 12px 16px;
-  background: #f0fdf4;
+}
+
+.insert-container {
+  display: block;
   border-radius: 6px;
-  border-left: 3px solid #22c55e;
+  overflow: hidden;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.ai-content {
+.insert-container:hover .insert-actions {
+  opacity: 1;
+  max-height: 100px;
+  padding: 12px 16px;
+}
+
+/* 内容显示区域 - 绿色主题（新增） */
+.insert-content-block {
+  display: block;
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border-left: 3px solid #22c55e;
+}
+
+.insert-content {
   margin: 0;
   padding: 0;
   white-space: pre-wrap;
@@ -106,7 +109,7 @@ const handleReject = () => {
   color: #374151;
 }
 
-.ai-content h1 {
+.insert-content h1 {
   font-size: 24px;
   font-weight: bold;
   margin: 20px 0 16px 0;
@@ -114,7 +117,7 @@ const handleReject = () => {
   display: block;
 }
 
-.ai-content h2 {
+.insert-content h2 {
   font-size: 20px;
   font-weight: bold;
   margin: 18px 0 14px 0;
@@ -122,7 +125,7 @@ const handleReject = () => {
   display: block;
 }
 
-.ai-content h3 {
+.insert-content h3 {
   font-size: 18px;
   font-weight: bold;
   margin: 16px 0 12px 0;
@@ -130,33 +133,33 @@ const handleReject = () => {
   display: block;
 }
 
-.ai-content ul {
+.insert-content ul {
   margin: 8px 0;
   padding-left: 20px;
 }
 
-.ai-content li {
+.insert-content li {
   margin: 4px 0;
   list-style-type: disc;
 }
 
-.ai-content strong {
+.insert-content strong {
   font-weight: bold;
   color: #1f2937;
 }
 
-.ai-content em {
+.insert-content em {
   font-style: italic;
   color: #4b5563;
 }
 
-.ai-content p {
+.insert-content p {
   margin: 12px 0;
   line-height: 1.6;
   display: block;
 }
 
-.ai-content-placeholder {
+.insert-content-placeholder {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -164,6 +167,7 @@ const handleReject = () => {
   font-style: italic;
 }
 
+/* 加载动画 */
 .loading-dots {
   display: flex;
   gap: 4px;
@@ -194,16 +198,21 @@ const handleReject = () => {
   }
 }
 
-.ai-help-actions {
+/* 操作按钮区域 */
+.insert-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
   background: #f9fafb;
   border-top: 1px solid #e5e7eb;
-  border-radius: 0 0 6px 6px;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.2s ease, max-height 0.2s ease, padding 0.2s ease;
 }
 
+/* 按钮样式 */
 .action-btn {
   display: flex;
   align-items: center;

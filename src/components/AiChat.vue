@@ -176,43 +176,9 @@
       </div>
     </div>
 
-    <!-- 模式选择器 -->
-    <div class="mode-selector">
-      <div class="mode-tabs">
-        <button 
-          class="mode-tab" 
-          :class="{ active: currentMode === 'chat' }"
-          @click="switchMode('chat')"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
-          对话模式
-        </button>
-        <button 
-          class="mode-tab" 
-          :class="{ active: currentMode === 'edit' }"
-          @click="switchMode('edit')"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14,2 14,8 20,8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10,9 9,9 8,9"></polyline>
-          </svg>
-          编辑模式
-        </button>
-      </div>
-      <div class="mode-description">
-        <span v-if="currentMode === 'chat'" class="mode-hint">
-          💬 提供修改建议，不会直接修改文档内容
-        </span>
-        <span v-else class="mode-hint">
-          ✏️ 直接在编辑器中显示修改建议，可选择接受或拒绝
-        </span>
-      </div>
-    </div>
+
+
+
 
     <!-- 引用显示区域 -->
     <div v-if="references.length > 0" class="references-area">
@@ -254,40 +220,43 @@
 
     <!-- 输入区域 -->
     <div class="chat-input-area">
-      <div class="input-container">
-        <div class="input-wrapper">
+      <div class="unified-input-box">
+        <div class="input-first-row">
+          <button class="add-context-btn" @click="showDocumentSelector" title="添加文档上下文">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="input-main-area">
           <textarea
             ref="messageInput"
             v-model="currentMessage"
             class="message-input"
-            :placeholder="currentMode === 'chat' ? '询问文档问题或请求修改建议...' : '描述您想要的文档修改...'"
+            :placeholder="currentMode === 'agent' ? '描述您想要的文档修改...' : '询问文档问题或请求修改建议...'"
             @keydown="handleInputKeydown"
             @input="handleInputChange"
             :disabled="aiStatus === 'typing'"
           ></textarea>
-          <div class="input-actions">
-            <button 
-              class="send-btn" 
-              @click="sendMessage" 
-              :disabled="!currentMessage.trim() || aiStatus === 'typing'"
-              :class="{ 'can-send': currentMessage.trim() && aiStatus !== 'typing' }"
-            >
-              <svg v-if="aiStatus !== 'typing'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22,2 15,22 11,13 2,9 22,2"></polygon>
-              </svg>
-              <div v-else class="loading-spinner small"></div>
-            </button>
-          </div>
+          <button 
+            class="send-btn" 
+            @click="sendMessage" 
+            :disabled="!currentMessage.trim() || aiStatus === 'typing'"
+            :class="{ 'can-send': currentMessage.trim() && aiStatus !== 'typing' }"
+          >
+            <svg v-if="aiStatus !== 'typing'" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+            </svg>
+            <div v-else class="loading-spinner small"></div>
+          </button>
         </div>
-      </div>
-      <div class="input-footer">
-        <div class="input-info">
+        <div class="input-last-row">
+          <select v-model="currentMode" class="mode-select" @change="handleModeChange">
+            <option value="agent">智能体</option>
+            <option value="chat">对话</option>
+          </select>
           <span class="char-count">{{ currentMessage.length }}/2000</span>
-        </div>
-        <div class="input-shortcuts">
-          <span class="shortcut">Enter 发送</span>
-          <span class="shortcut">Shift+Enter 换行</span>
         </div>
       </div>
     </div>
@@ -312,7 +281,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['close', 'insert-content', 'apply-edit-suggestion', 'reject-edit-suggestion', 'insert-diff-node'])
+const emit = defineEmits(['close', 'insert-content', 'apply-edit-suggestion', 'reject-edit-suggestion', 'insert-diff-node', 'save-before-agent'])
 
 // AI聊天相关数据
 const aiStatus = ref('online') // 'online', 'typing', 'offline'
@@ -334,7 +303,7 @@ const editingTitle = ref('') // 编辑中的标题
 const titleInput = ref(null) // 标题输入框引用
 
 // 模式选择相关数据
-const currentMode = ref('chat') // 'chat' 或 'edit'
+const currentMode = ref('agent') // 'agent'(智能体) 或 'chat'(对话)，默认为智能体模式
 const editSuggestions = ref([]) // 编辑模式的建议列表
 
 // 引用管理相关数据
@@ -378,9 +347,9 @@ const sendMessage = async () => {
   aiStatus.value = 'typing'
   
   try {
-    // 根据模式调用不同的API
-    if (currentMode.value === 'edit') {
-      // 编辑模式：调用智能体API
+    // 根据模式调用不同API
+    if (currentMode.value === 'agent') {
+      // 智能体模式：调用智能体API
       await callAgentAPI(messageText)
     } else {
       // 对话模式：调用AI问答API
@@ -409,6 +378,13 @@ const callAgentAPI = async (userPrompt) => {
   console.log('当前会话ID:', agentSessionId.value, '将会复用会话历史')
   
   try {
+    // 在调用智能体API之前，先触发保存文档
+    console.log('智能体模式：调用API前先保存文档')
+    emit('save-before-agent')
+    
+    // 等待一个短暂的时间，确保保存请求发送
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
     // 构建目标选中文本信息（如果有引用）
     let targetSelection = undefined
     if (references.value.length > 0) {
@@ -985,6 +961,18 @@ const cancelEditTitle = () => {
   editingTitle.value = ''
 }
 
+// 模式切换处理
+const handleModeChange = () => {
+  console.log('模式切换为:', currentMode.value)
+}
+
+// 显示文档选择器
+const showDocumentSelector = () => {
+  console.log('打开文档选择器')
+  // TODO: 实现文档选择器对话框
+  alert('文档选择器功能待实现')
+}
+
 const formatSessionTime = (timestamp) => {
   const now = new Date()
   const time = new Date(timestamp)
@@ -1461,55 +1449,9 @@ const getSourceLabel = (source) => {
   color: #909399;
 }
 
-/* 模式选择器 */
-.mode-selector {
-  border-top: 1px solid #e4e7ed;
-  background: #fafafa;
-  flex-shrink: 0;
-}
 
-.mode-tabs {
-  display: flex;
-  padding: 12px 16px 8px 16px;
-  gap: 8px;
-}
 
-.mode-tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  background: white;
-  color: #606266;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.mode-tab:hover {
-  background: #f5f7fa;
-  border-color: #c0c4cc;
-}
-
-.mode-tab.active {
-  background: #409eff;
-  border-color: #409eff;
-  color: white;
-}
-
-.mode-description {
-  padding: 4px 16px 12px 16px;
-}
-
-.mode-hint {
-  font-size: 12px;
-  color: #909399;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
 
 /* 引用区域样式 */
 .references-area {
@@ -1630,28 +1572,59 @@ const getSourceLabel = (source) => {
 /* 输入区域 */
 .chat-input-area {
   border-top: 1px solid #e4e7ed;
-  background: white;
+  background: #fafafa;
   flex-shrink: 0;
+  padding: 12px 16px;
 }
 
-.input-container {
-  padding: 16px;
-}
-
-.input-wrapper {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
+/* 统一输入框 */
+.unified-input-box {
+  background: white;
   border: 1px solid #e4e7ed;
   border-radius: 12px;
-  padding: 8px;
-  background: #fafafa;
   transition: border-color 0.2s;
 }
 
-.input-wrapper:focus-within {
+.unified-input-box:focus-within {
   border-color: #409eff;
-  background: white;
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
+}
+
+/* 第一行（+按钮） */
+.input-first-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 0 12px;
+  min-height: 36px;
+}
+
+.add-context-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #909399;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.add-context-btn:hover {
+  background: #f5f7fa;
+  color: #409eff;
+}
+
+/* 主输入区域 */
+.input-main-area {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 48px;
 }
 
 .message-input {
@@ -1663,7 +1636,7 @@ const getSourceLabel = (source) => {
   line-height: 1.5;
   color: #303133;
   resize: none;
-  min-height: 20px;
+  min-height: 24px;
   max-height: 120px;
   font-family: inherit;
 }
@@ -1675,11 +1648,6 @@ const getSourceLabel = (source) => {
 .message-input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.input-actions {
-  display: flex;
-  align-items: center;
 }
 
 .send-btn {
@@ -1694,6 +1662,7 @@ const getSourceLabel = (source) => {
   cursor: pointer;
   color: #909399;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 .send-btn.can-send {
@@ -1710,31 +1679,42 @@ const getSourceLabel = (source) => {
   opacity: 0.6;
 }
 
-.input-footer {
+/* 最后一行（模式选择器和字符计数） */
+.input-last-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
-  font-size: 11px;
-  color: #909399;
-  border-top: 1px solid #f0f0f0;
+  padding: 0 12px 8px 12px;
+  min-height: 32px;
 }
 
-.input-info {
-  display: flex;
-  gap: 12px;
+.mode-select {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #606266;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.mode-select:hover {
+  background: #f5f7fa;
+}
+
+.mode-select:focus {
+  background: #f5f7fa;
+}
+
+.mode-select option {
+  padding: 8px;
+  background: white;
 }
 
 .char-count {
-  color: #c0c4cc;
-}
-
-.input-shortcuts {
-  display: flex;
-  gap: 12px;
-}
-
-.shortcut {
+  font-size: 11px;
   color: #c0c4cc;
 }
 

@@ -365,6 +365,7 @@
             @apply-edit-suggestion="handleApplyEditSuggestion"
             @reject-edit-suggestion="handleRejectEditSuggestion"
             @insert-diff-node="handleInsertDiffNode"
+            @save-before-agent="handleSaveBeforeAgent"
           />
         </div>
 
@@ -417,6 +418,23 @@
       @insert-ai-help="handleAiTextDialogInsert"
       ref="aiTextDialog"
     />
+    
+    <!-- 全局批量操作按钮 -->
+    <div v-if="hasPluginNodes" class="batch-actions">
+      <button class="batch-btn accept-all-btn" @click="handleAcceptAll">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <polyline points="20,6 9,17 4,12"></polyline>
+        </svg>
+        全部接受
+      </button>
+      <button class="batch-btn reject-all-btn" @click="handleRejectAll">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+        全部拒绝
+      </button>
+    </div>
   </div>
 </template>
 
@@ -434,7 +452,8 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { Heading } from '@tiptap/extension-heading'
 import { Color } from '@tiptap/extension-color'
 import DiffNode from '../extensions/DiffNode.js'
-import AiHelpNode from '../extensions/AiHelpNode.js'
+import InsertNode from '../extensions/InsertNode.js'
+import DeleteNode from '../extensions/DeleteNode.js'
 import { Highlight } from '@tiptap/extension-highlight'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { BulletList } from '@tiptap/extension-bullet-list'
@@ -568,6 +587,9 @@ const isResizing = ref(false)
 // 大纲相关数据
 const outlineItems = ref([])
 
+// 插件节点检测
+const hasPluginNodes = ref(false)
+
 // 防抖函数
 const debounce = (func, wait) => {
   let timeout
@@ -653,7 +675,8 @@ onMounted(() => {
       //   showOnlyCurrent: false,
       // }),
       DiffNode,
-      AiHelpNode,
+      InsertNode,
+      DeleteNode,
     ],
     onUpdate: ({ editor }) => {
       const content = editor.getHTML()
@@ -779,8 +802,99 @@ const handleContentChange = (content) => {
   // 立即更新大纲
   updateOutline()
   
+  // 检测是否有插件节点
+  checkPluginNodes()
+  
   // 防抖更新文档
   debouncedUpdateDocument(content)
+}
+
+// 检测文档中是否有插件节点
+const checkPluginNodes = () => {
+  if (!editor.value) {
+    hasPluginNodes.value = false
+    return
+  }
+  
+  const { doc } = editor.value.state
+  let hasNodes = false
+  
+  doc.descendants((node) => {
+    if (node.type.name === 'insertNode' || 
+        node.type.name === 'deleteNode' || 
+        node.type.name === 'diffNode') {
+      hasNodes = true
+      return false // 停止遍历
+    }
+  })
+  
+  hasPluginNodes.value = hasNodes
+}
+
+// 全部接受
+const handleAcceptAll = () => {
+  if (!editor.value) return
+  
+  const { doc } = editor.value.state
+  const nodesToAccept = []
+  
+  // 收集所有插件节点
+  doc.descendants((node) => {
+    if (node.type.name === 'insertNode' && node.attrs.insertId) {
+      nodesToAccept.push({ type: 'insert', id: node.attrs.insertId })
+    } else if (node.type.name === 'deleteNode' && node.attrs.deleteId) {
+      nodesToAccept.push({ type: 'delete', id: node.attrs.deleteId })
+    } else if (node.type.name === 'diffNode' && node.attrs.diffId) {
+      nodesToAccept.push({ type: 'diff', id: node.attrs.diffId })
+    }
+  })
+  
+  // 执行所有接受操作
+  nodesToAccept.forEach(({ type, id }) => {
+    if (type === 'insert') {
+      editor.value.commands.acceptInsert(id)
+    } else if (type === 'delete') {
+      editor.value.commands.acceptDelete(id)
+    } else if (type === 'diff') {
+      editor.value.commands.acceptDiff(id)
+    }
+  })
+  
+  // 保存文档
+  saveDocument()
+}
+
+// 全部拒绝
+const handleRejectAll = () => {
+  if (!editor.value) return
+  
+  const { doc } = editor.value.state
+  const nodesToReject = []
+  
+  // 收集所有插件节点
+  doc.descendants((node) => {
+    if (node.type.name === 'insertNode' && node.attrs.insertId) {
+      nodesToReject.push({ type: 'insert', id: node.attrs.insertId })
+    } else if (node.type.name === 'deleteNode' && node.attrs.deleteId) {
+      nodesToReject.push({ type: 'delete', id: node.attrs.deleteId })
+    } else if (node.type.name === 'diffNode' && node.attrs.diffId) {
+      nodesToReject.push({ type: 'diff', id: node.attrs.diffId })
+    }
+  })
+  
+  // 执行所有拒绝操作
+  nodesToReject.forEach(({ type, id }) => {
+    if (type === 'insert') {
+      editor.value.commands.rejectInsert(id)
+    } else if (type === 'delete') {
+      editor.value.commands.rejectDelete(id)
+    } else if (type === 'diff') {
+      editor.value.commands.rejectDiff(id)
+    }
+  })
+  
+  // 保存文档
+  saveDocument()
 }
 
 // 保存文档标题
@@ -1254,7 +1368,7 @@ const handleInsertDiffNode = (editData) => {
   const {
     paragraphId,
     operation,
-    originalContent,
+    originalContent: originalContentFromBackend,
     newContent,
     reasoning,
     startOffset,
@@ -1263,7 +1377,7 @@ const handleInsertDiffNode = (editData) => {
   } = editData
   
   // 优先使用后端提供的originalContent作为原文
-  const originalText = originalContent || ''
+  const originalText = originalContentFromBackend || ''
   console.log('使用的原文:', originalText)
   console.log('AI生成的新内容:', newContent)
   
@@ -1340,42 +1454,42 @@ const handleInsertDiffNode = (editData) => {
   
   console.log('找到插入位置:', insertPosition)
   
-  // 收集目标节点的格式标记
-  let originalMarks = []
-  if (targetNode) {
-    targetNode.descendants((child) => {
-      if (child.marks && child.marks.length > 0) {
-        child.marks.forEach(mark => {
-          const markData = {
-            type: mark.type.name,
-            attrs: mark.attrs || {}
-          }
-          // 避免重复添加
-          if (!originalMarks.find(m => m.type === markData.type && JSON.stringify(m.attrs) === JSON.stringify(markData.attrs))) {
-            originalMarks.push(markData)
-          }
-        })
-      }
-    })
+  // 获取目标节点的HTML内容
+  let originalContentObj = null
+  if (targetNode && insertPosition !== null) {
+    // 使用 ProseMirror 的 DOMSerializer 将目标节点转换为 HTML
+    const div = document.createElement('div')
+    const serializer = editor.value.view.someProp('domSerializer') || 
+                       editor.value.view.state.schema.cached.domSerializer || 
+                       window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+    
+    if (serializer) {
+      const nodeDOM = serializer.serializeNode(targetNode)
+      div.appendChild(nodeDOM)
+    }
+    
+    originalContentObj = {
+      text: originalText,
+      html: div.innerHTML || originalText
+    }
+    console.log('生成的originalContentObj:', originalContentObj)
   }
-  
-  console.log('收集到的格式标记:', originalMarks)
   
   // 根据operation类型决定如何插入DiffNode
   console.log('执行操作类型:', operation)
   
   try {
     if (operation === 'replace') {
-      // 替换操作：在目标位置插入DiffNode，使用后端提供的originalContent
+      // 替换操作：在目标位置插入DiffNode，使用原始HTML
       console.log('执行replace操作')
       editor.value.chain()
         .focus()
         .setTextSelection({ from: insertPosition, to: insertPosition + (targetNode?.nodeSize || 0) })
         .insertDiff({
           originalText: originalText,  // 直接使用后端提供的原文
+          originalContent: originalContentObj,  // 使用原始HTML
           aiText: newContent,
-          diffType: 'replace',
-          originalMarks: originalMarks
+          diffType: 'replace'
         })
         .run()
     } else if (operation === 'delete') {
@@ -1386,30 +1500,28 @@ const handleInsertDiffNode = (editData) => {
         .setTextSelection({ from: insertPosition, to: insertPosition + (targetNode?.nodeSize || 0) })
         .insertDiff({
           originalText: originalText,  // 直接使用后端提供的原文
+          originalContent: originalContentObj,  // 使用原始HTML
           aiText: '',
-          diffType: 'delete',
-          originalMarks: originalMarks
+          diffType: 'delete'
         })
         .run()
     } else if (operation === 'insert_before' || operation === 'insert_after') {
-      // 插入操作
-      console.log('执行', operation, '操作')
+      // 插入操作：使用InsertNode渲染
+      console.log('执行', operation, '操作，使用InsertComponent')
       const insertPos = operation === 'insert_before' ? insertPosition : (insertPosition + (targetNode?.nodeSize || 0))
       editor.value.chain()
         .focus()
         .setTextSelection(insertPos)
-        .insertDiff({
-          originalText: '',
-          aiText: newContent,
-          diffType: 'insert',
-          originalMarks: []
+        .insertAiContent({
+          aiContent: newContent,
+          prompt: reasoning || ''
         })
         .run()
     }
     
-    console.log('=== DiffNode插入完成 ===')
+    console.log('=== 节点插入完成 ===')
   } catch (error) {
-    console.error('DiffNode插入失败:', error)
+    console.error('节点插入失败:', error)
   }
 }
 
@@ -1568,20 +1680,32 @@ const handleAddToChat = (text) => {
 
 const handleExpandText = (text) => {
   if (!editor.value) return
-  
-  // 获取当前选中文本的格式信息
   const { from, to } = editor.value.state.selection
-  const marks = editor.value.state.doc.resolve(from).marks()
+  
+  // 获取选区的完整内容（包括所有格式信息）
+  const slice = editor.value.state.doc.slice(from, to)
+  const fragment = slice.content
+  const div = document.createElement('div')
+  const serializer = editor.value.view.someProp('domSerializer') || 
+                     editor.value.view.state.schema.cached.domSerializer || 
+                     window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+  
+  if (serializer) {
+    const domFragment = serializer.serializeFragment(fragment)
+    div.appendChild(domFragment)
+  }
+  
+  const originalContent = {
+    text: text,
+    html: div.innerHTML || text
+  }
   
   // 先创建空的Diff节点
   editor.value.commands.insertDiff({
     originalText: text,
+    originalContent: originalContent,
     aiText: '',
-    diffType: 'expand',
-    originalMarks: marks.map(mark => ({
-      type: mark.type.name,
-      attrs: mark.attrs
-    }))
+    diffType: 'expand'
   })
   
   // 获取diffId
@@ -1626,15 +1750,31 @@ const handleExpandText = (text) => {
 
 const handleContinueText = (text) => {
   if (!editor.value) return
-  
   const { from, to } = editor.value.state.selection
-  const marks = editor.value.state.doc.resolve(from).marks()
+  
+  // 获取选区的完整内容（包括所有格式信息）
+  const slice = editor.value.state.doc.slice(from, to)
+  const fragment = slice.content
+  const div = document.createElement('div')
+  const serializer = editor.value.view.someProp('domSerializer') || 
+                     editor.value.view.state.schema.cached.domSerializer || 
+                     window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+  
+  if (serializer) {
+    const domFragment = serializer.serializeFragment(fragment)
+    div.appendChild(domFragment)
+  }
+  
+  const originalContent = {
+    text: text,
+    html: div.innerHTML || text
+  }
   
   editor.value.commands.insertDiff({
     originalText: text,
+    originalContent: originalContent,
     aiText: '',
-    diffType: 'continue',
-    originalMarks: marks.map(mark => ({ type: mark.type.name, attrs: mark.attrs }))
+    diffType: 'continue'
   })
   
   let currentDiffId = null
@@ -1657,8 +1797,32 @@ const handleContinueText = (text) => {
 const handleAbbreviateText = (text) => {
   if (!editor.value) return
   const { from, to } = editor.value.state.selection
-  const marks = editor.value.state.doc.resolve(from).marks()
-  editor.value.commands.insertDiff({ originalText: text, aiText: '', diffType: 'abbreviate', originalMarks: marks.map(mark => ({ type: mark.type.name, attrs: mark.attrs })) })
+  
+  // 获取选区的完整内容（包括所有格式信息）
+  const slice = editor.value.state.doc.slice(from, to)
+  const fragment = slice.content
+  const div = document.createElement('div')
+  const serializer = editor.value.view.someProp('domSerializer') || 
+                     editor.value.view.state.schema.cached.domSerializer || 
+                     window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+  
+  if (serializer) {
+    const domFragment = serializer.serializeFragment(fragment)
+    div.appendChild(domFragment)
+  }
+  
+  const originalContent = {
+    text: text,
+    html: div.innerHTML || text
+  }
+  
+  editor.value.commands.insertDiff({ 
+    originalText: text, 
+    originalContent: originalContent,
+    aiText: '', 
+    diffType: 'abbreviate'
+  })
+  
   let currentDiffId = null
   editor.value.state.doc.descendants((node) => { if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId })
   if (!currentDiffId) return
@@ -1671,56 +1835,172 @@ const handleAbbreviateText = (text) => {
 const handleCorrectText = (text) => {
   if (!editor.value) return
   const { from, to } = editor.value.state.selection
-  const marks = editor.value.state.doc.resolve(from).marks()
-  editor.value.commands.insertDiff({ originalText: text, aiText: '', diffType: 'correct', originalMarks: marks.map(mark => ({ type: mark.type.name, attrs: mark.attrs })) })
+  
+  // 获取选区的完整内容（包括所有格式信息）
+  const slice = editor.value.state.doc.slice(from, to)
+  // 使用 ProseMirror 的 DOMSerializer 将选区内容转换为 HTML
+  const fragment = slice.content
+  const div = document.createElement('div')
+  const serializer = editor.value.view.someProp('domSerializer') || 
+                     editor.value.view.state.schema.cached.domSerializer || 
+                     window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+  
+  if (serializer) {
+    const domFragment = serializer.serializeFragment(fragment)
+    div.appendChild(domFragment)
+  }
+  
+  const originalContent = {
+    text: text,
+    html: div.innerHTML || text
+  }
+  
+  console.log('handleCorrectText - originalContent:', originalContent)
+  console.log('handleCorrectText - html:', originalContent.html)
+  
+  editor.value.commands.insertDiff({ 
+    originalText: text, 
+    originalContent: originalContent,
+    aiText: '', 
+    diffType: 'correct'
+  })
+  
   let currentDiffId = null
-  editor.value.state.doc.descendants((node) => { if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId })
+  editor.value.state.doc.descendants((node) => { 
+    if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId 
+  })
   if (!currentDiffId) return
   const documentId = props.document?.id || null
   const context = editor.value ? editor.value.getText() : ''
-  aiAPI.aiTextProcessStream('correct', text, null, documentId, context, (content) => { if (editor.value && currentDiffId) editor.value.commands.updateDiff(currentDiffId, content) }, () => saveDocument(), (error) => console.error('AI纠错错误:', error))
+  aiAPI.aiTextProcessStream('correct', text, null, documentId, context, (content) => { 
+    if (editor.value && currentDiffId) editor.value.commands.updateDiff(currentDiffId, content) 
+  }, () => saveDocument(), (error) => console.error('AI纠错错误:', error))
   hideFloatingToolbar()
 }
 
 const handleSummarizeText = (text) => {
   if (!editor.value) return
   const { from, to } = editor.value.state.selection
-  const marks = editor.value.state.doc.resolve(from).marks()
-  editor.value.commands.insertDiff({ originalText: text, aiText: '', diffType: 'summarize', originalMarks: marks.map(mark => ({ type: mark.type.name, attrs: mark.attrs })) })
+  
+  // 获取选区的完整内容（包括所有格式信息）
+  const slice = editor.value.state.doc.slice(from, to)
+  const fragment = slice.content
+  const div = document.createElement('div')
+  const serializer = editor.value.view.someProp('domSerializer') || 
+                     editor.value.view.state.schema.cached.domSerializer || 
+                     window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+  
+  if (serializer) {
+    const domFragment = serializer.serializeFragment(fragment)
+    div.appendChild(domFragment)
+  }
+  
+  const originalContent = {
+    text: text,
+    html: div.innerHTML || text
+  }
+  
+  editor.value.commands.insertDiff({ 
+    originalText: text, 
+    originalContent: originalContent,
+    aiText: '', 
+    diffType: 'summarize'
+  })
+  
   let currentDiffId = null
-  editor.value.state.doc.descendants((node) => { if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId })
+  editor.value.state.doc.descendants((node) => { 
+    if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId 
+  })
   if (!currentDiffId) return
   const documentId = props.document?.id || null
   const context = editor.value ? editor.value.getText() : ''
-  aiAPI.aiTextProcessStream('summarize', text, null, documentId, context, (content) => { if (editor.value && currentDiffId) editor.value.commands.updateDiff(currentDiffId, content) }, () => saveDocument(), (error) => console.error('AI摘要错误:', error))
+  aiAPI.aiTextProcessStream('summarize', text, null, documentId, context, (content) => { 
+    if (editor.value && currentDiffId) editor.value.commands.updateDiff(currentDiffId, content) 
+  }, () => saveDocument(), (error) => console.error('AI摘要错误:', error))
   hideFloatingToolbar()
 }
 
 const handleTranslateText = (text) => {
   if (!editor.value) return
   const { from, to } = editor.value.state.selection
-  const marks = editor.value.state.doc.resolve(from).marks()
-  editor.value.commands.insertDiff({ originalText: text, aiText: '', diffType: 'translate', originalMarks: marks.map(mark => ({ type: mark.type.name, attrs: mark.attrs })) })
+  
+  // 获取选区的完整内容（包括所有格式信息）
+  const slice = editor.value.state.doc.slice(from, to)
+  const fragment = slice.content
+  const div = document.createElement('div')
+  const serializer = editor.value.view.someProp('domSerializer') || 
+                     editor.value.view.state.schema.cached.domSerializer || 
+                     window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+  
+  if (serializer) {
+    const domFragment = serializer.serializeFragment(fragment)
+    div.appendChild(domFragment)
+  }
+  
+  const originalContent = {
+    text: text,
+    html: div.innerHTML || text
+  }
+  
+  editor.value.commands.insertDiff({ 
+    originalText: text, 
+    originalContent: originalContent,
+    aiText: '', 
+    diffType: 'translate'
+  })
+  
   let currentDiffId = null
-  editor.value.state.doc.descendants((node) => { if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId })
+  editor.value.state.doc.descendants((node) => { 
+    if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId 
+  })
   if (!currentDiffId) return
   const documentId = props.document?.id || null
   const context = editor.value ? editor.value.getText() : ''
-  aiAPI.aiTextProcessStream('translate', text, null, documentId, context, (content) => { if (editor.value && currentDiffId) editor.value.commands.updateDiff(currentDiffId, content) }, () => saveDocument(), (error) => console.error('AI翻译错误:', error))
+  aiAPI.aiTextProcessStream('translate', text, null, documentId, context, (content) => { 
+    if (editor.value && currentDiffId) editor.value.commands.updateDiff(currentDiffId, content) 
+  }, () => saveDocument(), (error) => console.error('AI翻译错误:', error))
   hideFloatingToolbar()
 }
 
 const handleFormatText = (text) => {
   if (!editor.value) return
   const { from, to } = editor.value.state.selection
-  const marks = editor.value.state.doc.resolve(from).marks()
-  editor.value.commands.insertDiff({ originalText: text, aiText: '', diffType: 'format', originalMarks: marks.map(mark => ({ type: mark.type.name, attrs: mark.attrs })) })
+  
+  // 获取选区的完整内容（包括所有格式信息）
+  const slice = editor.value.state.doc.slice(from, to)
+  const fragment = slice.content
+  const div = document.createElement('div')
+  const serializer = editor.value.view.someProp('domSerializer') || 
+                     editor.value.view.state.schema.cached.domSerializer || 
+                     window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+  
+  if (serializer) {
+    const domFragment = serializer.serializeFragment(fragment)
+    div.appendChild(domFragment)
+  }
+  
+  const originalContent = {
+    text: text,
+    html: div.innerHTML || text
+  }
+  
+  editor.value.commands.insertDiff({ 
+    originalText: text, 
+    originalContent: originalContent,
+    aiText: '', 
+    diffType: 'format'
+  })
+  
   let currentDiffId = null
-  editor.value.state.doc.descendants((node) => { if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId })
+  editor.value.state.doc.descendants((node) => { 
+    if (node.type.name === 'diffNode') currentDiffId = node.attrs.diffId 
+  })
   if (!currentDiffId) return
   const documentId = props.document?.id || null
   const context = editor.value ? editor.value.getText() : ''
-  aiAPI.aiTextProcessStream('format', text, null, documentId, context, (content) => { if (editor.value && currentDiffId) editor.value.commands.updateDiff(currentDiffId, content) }, () => saveDocument(), (error) => console.error('AI格式规整错误:', error))
+  aiAPI.aiTextProcessStream('format', text, null, documentId, context, (content) => { 
+    if (editor.value && currentDiffId) editor.value.commands.updateDiff(currentDiffId, content) 
+  }, () => saveDocument(), (error) => console.error('AI格式规整错误:', error))
   hideFloatingToolbar()
 }
 
@@ -1814,10 +2094,53 @@ const handleAcceptDiff = (diffId) => {
 const handleRejectDiff = (diffId) => {
   if (!editor.value) return
   
-  // 使用DiffNode的命令拒绝diff
+  // 使用DiffNode的命令拒绝 diff
   editor.value.commands.rejectDiff(diffId)
   
   // 保存文档
+  saveDocument()
+}
+
+// 处理diff全部保留
+const handleKeepAllDiff = (diffId) => {
+  if (!editor.value) return
+  
+  // 使用DiffNode的命令全部保留
+  editor.value.commands.keepAllDiff(diffId)
+  
+  // 保存文档
+  saveDocument()
+}
+
+// 处理Insert插件 - 接受
+const handleAcceptInsert = (insertId) => {
+  if (!editor.value) return
+  
+  editor.value.commands.acceptInsert(insertId)
+  saveDocument()
+}
+
+// 处理Insert插件 - 拒绝
+const handleRejectInsert = (insertId) => {
+  if (!editor.value) return
+  
+  editor.value.commands.rejectInsert(insertId)
+  saveDocument()
+}
+
+// 处理Delete插件 - 接受删除
+const handleAcceptDelete = (deleteId) => {
+  if (!editor.value) return
+  
+  editor.value.commands.acceptDelete(deleteId)
+  saveDocument()
+}
+
+// 处理Delete插件 - 保留内容
+const handleRejectDelete = (deleteId) => {
+  if (!editor.value) return
+  
+  editor.value.commands.rejectDelete(deleteId)
   saveDocument()
 }
 
@@ -1845,6 +2168,12 @@ const handleEditorContextMenu = (event) => {
 // 隐藏右键菜单
 const hideContextMenu = () => {
   contextMenuVisible.value = false
+}
+
+// 智能体模式调用API前保存文档
+const handleSaveBeforeAgent = () => {
+  console.log('智能体模式：在调用API前保存文档')
+  saveDocument(true) // 静默保存
 }
 
 // 处理AI帮写
@@ -1914,20 +2243,32 @@ const callAiTextProcessStream = (prompt) => {
     return
   }
   
-  // 获取原始文本的格式信息
+  // 获取选区的完整内容（包括所有格式信息）
   const { from: rangeFrom, to: rangeTo } = selectedTextRange.value
-  const marks = editor.value.state.doc.resolve(rangeFrom).marks()
+  const slice = editor.value.state.doc.slice(rangeFrom, rangeTo)
+  const fragment = slice.content
+  const div = document.createElement('div')
+  const serializer = editor.value.view.someProp('domSerializer') || 
+                     editor.value.view.state.schema.cached.domSerializer || 
+                     window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
+  
+  if (serializer) {
+    const domFragment = serializer.serializeFragment(fragment)
+    div.appendChild(domFragment)
+  }
+  
+  const originalContent = {
+    text: originalText,
+    html: div.innerHTML || originalText
+  }
   
   // 创建Diff节点
   editor.value.commands.setTextSelection({ from: rangeFrom, to: rangeTo })
   editor.value.commands.insertDiff({
     originalText: originalText,
+    originalContent: originalContent,
     aiText: '',
-    diffType: 'custom',
-    originalMarks: marks.map(mark => ({
-      type: mark.type.name,
-      attrs: mark.attrs
-    }))
+    diffType: 'custom'
   })
   
   // 获取diffId
@@ -1976,7 +2317,7 @@ const callAiTextProcessStream = (prompt) => {
   )
 }
 
-// 插入AI帮写节点
+// 插入AI新增内容节点
 const handleInsertAiHelp = (data) => {
   console.log('handleInsertAiHelp called with:', data)
   if (!editor.value) {
@@ -1984,14 +2325,14 @@ const handleInsertAiHelp = (data) => {
     return
   }
   
-  console.log('Creating AI help node...')
-  // 创建AI帮写节点（初始内容为空）
-  const result = editor.value.commands.insertAiHelp({
+  console.log('Creating Insert node...')
+  // 创建 Insert 节点（初始内容为空）
+  const result = editor.value.commands.insertAiContent({
     aiContent: data.aiContent || '',
     prompt: data.prompt
   })
   
-  console.log('AI help node created, closing dialog')
+  console.log('Insert node created, closing dialog')
   // 关闭对话框
   aiHelpDialogVisible.value = false
   
@@ -2012,17 +2353,17 @@ const handleInsertAiHelp = (data) => {
 }
 
 // 流式更新AI内容
-const updateAiHelpContent = (helpId, content) => {
-  console.log('updateAiHelpContent被调用，helpId:', helpId, 'content:', content)
+const updateAiHelpContent = (insertId, content) => {
+  console.log('updateAiHelpContent被调用，insertId:', insertId, 'content:', content)
   if (!editor.value) {
     console.log('editor.value不存在')
     return
   }
   
-  console.log('调用editor.commands.updateAiHelpContent')
-  // 使用AiHelpNode的命令更新内容
-  const result = editor.value.commands.updateAiHelpContent(helpId, content)
-  console.log('updateAiHelpContent命令执行结果:', result)
+  console.log('调用editor.commands.updateInsertContent')
+  // 使用 InsertNode 的命令更新内容
+  const result = editor.value.commands.updateInsertContent(insertId, content)
+  console.log('updateInsertContent命令执行结果:', result)
 }
 
 // 调用AI帮写流式API
@@ -2046,21 +2387,21 @@ const callAiHelpStream = (prompt) => {
     // onChunk - 接收到内容片段时调用
     (content) => {
       console.log('onChunk回调被调用，内容:', content)
-      // 获取最新的helpId
+      // 获取最新的 insertId
       const { doc } = editor.value.state
-      let latestHelpId = null
+      let latestInsertId = null
       doc.descendants((node) => {
-        if (node.type.name === 'aiHelpNode' && node.attrs.helpId) {
-          latestHelpId = node.attrs.helpId
+        if (node.type.name === 'insertNode' && node.attrs.insertId) {
+          latestInsertId = node.attrs.insertId
         }
       })
       
-      console.log('找到的helpId:', latestHelpId)
-      if (latestHelpId) {
-        console.log('调用updateAiHelpContent，helpId:', latestHelpId, 'content:', content)
-        updateAiHelpContent(latestHelpId, content)
+      console.log('找到的insertId:', latestInsertId)
+      if (latestInsertId) {
+        console.log('调用updateAiHelpContent，insertId:', latestInsertId, 'content:', content)
+        updateAiHelpContent(latestInsertId, content)
       } else {
-        console.log('未找到helpId，无法更新内容')
+        console.log('未找到insertId，无法更新内容')
       }
     },
     // onDone - 流式完成时调用
@@ -2071,39 +2412,39 @@ const callAiHelpStream = (prompt) => {
     (error) => {
       console.error('AI帮写错误:', error)
       
-      // 获取最新的helpId，显示错误信息
+      // 获取最新的 insertId，显示错误信息
       const { doc } = editor.value.state
-      let latestHelpId = null
+      let latestInsertId = null
       doc.descendants((node) => {
-        if (node.type.name === 'aiHelpNode' && node.attrs.helpId) {
-          latestHelpId = node.attrs.helpId
+        if (node.type.name === 'insertNode' && node.attrs.insertId) {
+          latestInsertId = node.attrs.insertId
         }
       })
       
-      if (latestHelpId) {
-        updateAiHelpContent(latestHelpId, `**错误：** ${error.message || 'AI服务暂时不可用，请稍后重试。'}`)
+      if (latestInsertId) {
+        updateAiHelpContent(latestInsertId, `**错误：** ${error.message || 'AI服务暂时不可用，请稍后重试。'}`)
       }
     }
   )
 }
 
-// 处理AI帮写接受
+// 处理AI帮写接受（已废弃，使用 handleAcceptInsert 替代）
 const handleAcceptAiHelp = (helpId) => {
   if (!editor.value) return
   
-  // 使用AiHelpNode的命令接受AI帮写
-  editor.value.commands.acceptAiHelp(helpId)
+  // 兼容：将 helpId 视为 insertId
+  editor.value.commands.acceptInsert(helpId)
   
   // 保存文档
   saveDocument()
 }
 
-// 处理AI帮写拒绝
+// 处理AI帮写拒绝（已废弃，使用 handleRejectInsert 替代）
 const handleRejectAiHelp = (helpId) => {
   if (!editor.value) return
   
-  // 使用AiHelpNode的命令拒绝AI帮写
-  editor.value.commands.rejectAiHelp(helpId)
+  // 兼容：将 helpId 视为 insertId
+  editor.value.commands.rejectInsert(helpId)
   
   // 保存文档
   saveDocument()
@@ -2206,13 +2547,37 @@ onMounted(() => {
     handleRejectDiff(event.detail.diffId)
   })
   
-  // 添加AI帮写组件事件监听器
+  window.addEventListener('keep-all-diff', (event) => {
+    handleKeepAllDiff(event.detail.diffId)
+  })
+  
+  // AI帮写组件事件监听器（兼容旧版 - 映射到 Insert）
   window.addEventListener('accept-ai-help', (event) => {
-    handleAcceptAiHelp(event.detail.helpId)
+    // 兼容旧版：将 helpId 视为 insertId
+    handleAcceptInsert(event.detail.helpId)
   })
   
   window.addEventListener('reject-ai-help', (event) => {
-    handleRejectAiHelp(event.detail.helpId)
+    // 兼容旧版：将 helpId 视为 insertId
+    handleRejectInsert(event.detail.helpId)
+  })
+  
+  // 添加Insert组件事件监听器
+  window.addEventListener('accept-insert', (event) => {
+    handleAcceptInsert(event.detail.insertId)
+  })
+  
+  window.addEventListener('reject-insert', (event) => {
+    handleRejectInsert(event.detail.insertId)
+  })
+  
+  // 添加Delete组件事件监听器
+  window.addEventListener('accept-delete', (event) => {
+    handleAcceptDelete(event.detail.deleteId)
+  })
+  
+  window.addEventListener('reject-delete', (event) => {
+    handleRejectDelete(event.detail.deleteId)
   })
 })
 
@@ -3119,5 +3484,77 @@ onUnmounted(() => {
   .editor-body {
     padding: 0 16px 16px 16px;
   }
+}
+
+/* 全局批量操作按钮 */
+.batch-actions {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  padding: 12px 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.batch-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.batch-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.batch-btn:active {
+  transform: translateY(0);
+}
+
+.accept-all-btn {
+  background: #059669;
+  color: white;
+}
+
+.accept-all-btn:hover {
+  background: #047857;
+}
+
+.reject-all-btn {
+  background: #dc2626;
+  color: white;
+}
+
+.reject-all-btn:hover {
+  background: #b91c1c;
+}
+
+.batch-btn svg {
+  flex-shrink: 0;
 }
 </style>

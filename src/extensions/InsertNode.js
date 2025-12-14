@@ -1,14 +1,14 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
-import AiHelpComponent from './AiHelpComponent.vue'
+import InsertComponent from './InsertComponent.vue'
 import { formatMarkdownToHtml } from '../utils/markdownFormatter.js'
 
-export const AiHelpNode = Node.create({
-  name: 'aiHelpNode',
+export const InsertNode = Node.create({
+  name: 'insertNode',
 
   group: 'block',
 
-  content: 'text*',  
+  content: 'text*',
 
   atom: true,
 
@@ -21,11 +21,11 @@ export const AiHelpNode = Node.create({
           'data-ai-content': attributes.aiContent,
         }),
       },
-      helpId: {
+      insertId: {
         default: '',
-        parseHTML: element => element.getAttribute('data-help-id'),
+        parseHTML: element => element.getAttribute('data-insert-id'),
         renderHTML: attributes => ({
-          'data-help-id': attributes.helpId,
+          'data-insert-id': attributes.insertId,
         }),
       },
       prompt: {
@@ -41,39 +41,37 @@ export const AiHelpNode = Node.create({
   parseHTML() {
     return [
       {
-        tag: 'div[data-type="ai-help-node"]',
+        tag: 'div[data-type="insert-node"]',
       },
     ]
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'ai-help-node' }), 0]
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'insert-node' }), 0]
   },
 
   addNodeView() {
-    return VueNodeViewRenderer(AiHelpComponent)
+    return VueNodeViewRenderer(InsertComponent)
   },
 
   addCommands() {
     return {
-      insertAiHelp: (attributes) => ({ commands }) => {
-        console.log('AiHelpNode insertAiHelp called with:', attributes)
+      insertAiContent: (attributes) => ({ commands }) => {
         return commands.insertContent({
           type: this.name,
           attrs: {
             ...attributes,
-            helpId: `aihelp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            insertId: `insert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           },
         })
       },
-      updateAiHelpContent: (helpId, content) => ({ commands, state, editor }) => {
+      updateInsertContent: (insertId, content) => ({ commands, state, editor }) => {
         const { doc } = state
         let found = false
         
         doc.descendants((node, pos) => {
-          if (node.type.name === 'aiHelpNode' && node.attrs.helpId === helpId) {
+          if (node.type.name === 'insertNode' && node.attrs.insertId === insertId) {
             try {
-              // 使用setNodeMarkup方法
               const tr = state.tr
               const newAttrs = {
                 ...node.attrs,
@@ -82,13 +80,12 @@ export const AiHelpNode = Node.create({
               
               tr.setNodeMarkup(pos, null, newAttrs)
               
-              // 检查事务是否有效
               if (tr.doc) {
                 editor.view.dispatch(tr)
                 found = true
               }
             } catch (error) {
-              console.error('Failed to update node:', error)
+              console.error('Failed to update insert node:', error)
             }
             
             return false
@@ -96,20 +93,17 @@ export const AiHelpNode = Node.create({
         })
         return found
       },
-      acceptAiHelp: (helpId) => ({ commands, state, editor }) => {
+      acceptInsert: (insertId) => ({ commands, state, editor }) => {
         const { doc } = state
         let found = false
         
         doc.descendants((node, pos) => {
-          if (node.type.name === 'aiHelpNode' && node.attrs.helpId === helpId) {
+          if (node.type.name === 'insertNode' && node.attrs.insertId === insertId) {
             const aiContent = node.attrs.aiContent
             
-            // 删除AI帮写节点
             commands.deleteRange({ from: pos, to: pos + node.nodeSize })
             
-            // 使用与AiHelpComponent相同的markdown处理逻辑
             const htmlContent = formatMarkdownToHtml(aiContent)
-            
             commands.insertContentAt(pos, htmlContent)
             
             found = true
@@ -119,13 +113,12 @@ export const AiHelpNode = Node.create({
         
         return found
       },
-      rejectAiHelp: (helpId) => ({ commands, state }) => {
+      rejectInsert: (insertId) => ({ commands, state }) => {
         const { doc } = state
         let found = false
         
         doc.descendants((node, pos) => {
-          if (node.type.name === 'aiHelpNode' && node.attrs.helpId === helpId) {
-            // 直接删除AI帮写节点
+          if (node.type.name === 'insertNode' && node.attrs.insertId === insertId) {
             commands.deleteRange({ from: pos, to: pos + node.nodeSize })
             
             found = true
@@ -139,4 +132,4 @@ export const AiHelpNode = Node.create({
   },
 })
 
-export default AiHelpNode
+export default InsertNode

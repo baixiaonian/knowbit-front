@@ -52,6 +52,16 @@ export const DiffNode = Node.create({
           'data-original-marks': JSON.stringify(attributes.originalMarks || []),
         }),
       },
+      originalContent: {
+        default: null,
+        parseHTML: element => {
+          const content = element.getAttribute('data-original-content')
+          return content ? JSON.parse(content) : null
+        },
+        renderHTML: attributes => ({
+          'data-original-content': attributes.originalContent ? JSON.stringify(attributes.originalContent) : null,
+        }),
+      },
     }
   },
 
@@ -162,10 +172,20 @@ export const DiffNode = Node.create({
           if (node.type.name === 'diffNode' && node.attrs.diffId === diffId) {
             const originalText = node.attrs.originalText
             const originalMarks = node.attrs.originalMarks || []
+            const originalContent = node.attrs.originalContent
             
             // 删除diff节点
             commands.deleteRange({ from: pos, to: pos + node.nodeSize })
             
+            // 如果有originalContent,优先使用HTML内容还原
+            if (originalContent && originalContent.html) {
+              // 直接插入HTML内容，不需要formatMarkdownToHtml转换
+              commands.insertContentAt(pos, originalContent.html)
+              found = true
+              return false
+            }
+            
+            // 否则使用原有的marks方式
             // 构建带格式的内容对象
             let marks = []
             
@@ -197,6 +217,83 @@ export const DiffNode = Node.create({
               commands.insertContentAt(pos, textNode)
             } else {
               commands.insertContentAt(pos, originalText)
+            }
+            
+            found = true
+            return false
+          }
+        })
+        
+        return found
+      },
+      keepAllDiff: (diffId) => ({ commands, state }) => {
+        const { doc } = state
+        let found = false
+        
+        doc.descendants((node, pos) => {
+          if (node.type.name === 'diffNode' && node.attrs.diffId === diffId) {
+            const originalText = node.attrs.originalText
+            const aiText = node.attrs.aiText
+            const originalMarks = node.attrs.originalMarks || []
+            const originalContent = node.attrs.originalContent
+            const insertPos = pos
+            
+            // 删除diff节点
+            commands.deleteRange({ from: pos, to: pos + node.nodeSize })
+            
+            // 如果有originalContent,优先使用HTML内容还原原文
+            if (originalContent && originalContent.html) {
+              // 合并原文和AI内容，一次性插入
+              const aiHtmlContent = formatMarkdownToHtml(aiText)
+              const combinedContent = originalContent.html + '<p><br></p>' + (aiHtmlContent || '<p>' + aiText + '</p>')
+              commands.insertContentAt(insertPos, combinedContent)
+              
+              found = true
+              return false
+            }
+            
+            // 否则使用原有的marks方式
+            // 构建原文的格式标记
+            let marks = []
+            originalMarks.forEach(mark => {
+              if (mark.type === 'textStyle' && mark.attrs) {
+                marks.push({
+                  type: 'textStyle',
+                  attrs: mark.attrs
+                })
+              } else if (mark.type === 'bold') {
+                marks.push({ type: 'bold' })
+              } else if (mark.type === 'italic') {
+                marks.push({ type: 'italic' })
+              } else if (mark.type === 'underline') {
+                marks.push({ type: 'underline' })
+              } else if (mark.type === 'strike') {
+                marks.push({ type: 'strike' })
+              }
+            })
+            
+            // 插入原文
+            if (marks.length > 0) {
+              const originalTextNode = {
+                type: 'text',
+                text: originalText,
+                marks: marks
+              }
+              commands.insertContentAt(insertPos, originalTextNode)
+            } else {
+              commands.insertContentAt(insertPos, originalText)
+            }
+            
+            // 插入换行
+            const currentPos = insertPos + originalText.length
+            commands.insertContentAt(currentPos, { type: 'hardBreak' })
+            
+            // 插入AI内容
+            const htmlContent = formatMarkdownToHtml(aiText)
+            if (htmlContent) {
+              commands.insertContentAt(currentPos + 1, htmlContent)
+            } else {
+              commands.insertContentAt(currentPos + 1, aiText)
             }
             
             found = true

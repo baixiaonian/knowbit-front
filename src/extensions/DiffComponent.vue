@@ -1,15 +1,15 @@
 <template>
   <NodeViewWrapper class="diff-node-wrapper">
     <div class="diff-container">
-      <!-- 原文显示区域 - 保持原有位置和样式 -->
-      <div class="original-text-inline">
-        <span class="original-content" :style="originalStyles" :data-debug-styles="JSON.stringify(originalStyles)">{{ originalText }}</span>
+      <!-- 原文显示区域 -->
+      <div class="diff-original-block">
+        <div class="diff-original-content" v-html="formattedOriginalHtml"></div>
       </div>
       
-      <!-- AI改写结果显示区域 - 显示在原文下方 -->
-      <div class="ai-text-block">
-        <div v-if="hasAiText" class="ai-content" :style="originalStyles" v-html="formattedAiText"></div>
-        <div v-else class="ai-content-placeholder">
+      <!-- AI改写结果显示区域 -->
+      <div class="diff-ai-block">
+        <div v-if="hasAiText" class="diff-ai-content" :style="originalStyles" v-html="formattedAiText"></div>
+        <div v-else class="diff-ai-placeholder">
           <div class="loading-dots">
             <span></span>
             <span></span>
@@ -26,6 +26,13 @@
             <polyline points="20,6 9,17 4,12"></polyline>
           </svg>
           接受
+        </button>
+        <button class="action-btn keep-all-btn" @click="handleKeepAll">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M9 11l3 3L22 4"></path>
+            <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+          </svg>
+          全部保留
         </button>
         <button class="action-btn reject-btn" @click="handleReject">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -50,8 +57,14 @@ const props = defineProps({
   }
 })
 
-// 从node属性中获取数据（使用computed确保响应式）
+// 从 node 属性中获取数据（使用 computed 确保响应式）
 const originalText = props.node.attrs.originalText || ''
+const originalContent = computed(() => {
+  return props.node.attrs.originalContent || null
+})
+const hasOriginalHtml = computed(() => {
+  return originalContent.value && originalContent.value.html
+})
 const aiText = computed(() => {
   return props.node.attrs.aiText || ''
 })
@@ -89,6 +102,19 @@ const originalStyles = computed(() => {
   console.log('DiffComponent - originalStyles:', styles)
 
   return styles
+})
+
+// 格式化原文HTML内容
+const formattedOriginalHtml = computed(() => {
+  // 直接返回原始HTML，如果没有则返回原始文本
+  if (hasOriginalHtml.value) {
+    console.log('DiffComponent - originalContent:', originalContent.value)
+    console.log('DiffComponent - formattedOriginalHtml:', originalContent.value.html)
+    return originalContent.value.html
+  }
+  // 如果没有HTML，返回纯文本
+  console.log('DiffComponent - fallback to originalText:', originalText)
+  return `<p>${originalText}</p>`
 })
 
 // 格式化AI内容（与AiHelpComponent保持一致）
@@ -190,55 +216,140 @@ const handleReject = () => {
     detail: { diffId: diffId }
   }))
 }
+
+const handleKeepAll = () => {
+  // 通过全局事件发送全部保留信号
+  window.dispatchEvent(new CustomEvent('keep-all-diff', {
+    detail: { 
+      diffId: diffId,
+      originalText: originalText,
+      aiText: aiText.value
+    }
+  }))
+}
 </script>
 
 <style scoped>
-/* 确保diff组件完全继承ProseMirror的样式 */
+/* 插件容器 */
 .diff-node-wrapper {
-  display: inline;
+  display: block;
   position: relative;
+  margin: 6px 0;
 }
 
 .diff-container {
-  display: inline;
-}
-
-/* 原文保持内联显示，只添加背景色 */
-.original-text-inline {
-  display: inline;
-  margin: 0;
-  padding: 0;
-}
-
-.original-content {
-  background: #fef2f2;
-  padding: 1px 2px;
-  border-radius: 2px;
-  margin: 0;
-  display: inline;
-  position: relative;
-}
-
-/* AI改写结果显示在原文下方 */
-.ai-text-block {
   display: block;
-  margin-top: 6px;
-  padding: 6px 10px;
-  background: #f0fdf4;
-  border-radius: 3px;
-  border-left: 2px solid #22c55e;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.ai-content {
+.diff-container:hover .diff-actions {
+  opacity: 1;
+  max-height: 100px;
+  padding: 12px 16px;
+}
+
+/* 原文显示区域 - 红色主题（原文/被替换） */
+.diff-original-block {
+  display: block;
+  padding: 12px 16px;
+  background: #fef2f2;
+}
+
+.diff-original-content {
   margin: 0;
   padding: 0;
-  white-space: pre-wrap;
-  display: inline;
   line-height: 1.6;
+  /* 不设置color,让内容保持原有颜色 */
+}
+
+/* 支持HTML内的块级元素 */
+.diff-original-content p,
+.diff-original-content h1,
+.diff-original-content h2,
+.diff-original-content h3,
+.diff-original-content h4,
+.diff-original-content h5,
+.diff-original-content h6 {
+  margin: 0;
+  padding: 0;
+  /* 不强制覆盖color，让每个元素保持自己的颜色 */
+  font-weight: inherit;
+}
+
+.diff-original-content h1 { font-size: 2em; font-weight: bold; margin: 0.5em 0; }
+.diff-original-content h2 { font-size: 1.5em; font-weight: bold; margin: 0.5em 0; }
+.diff-original-content h3 { font-size: 1.17em; font-weight: bold; margin: 0.5em 0; }
+.diff-original-content h4 { font-size: 1em; font-weight: bold; margin: 0.5em 0; }
+.diff-original-content h5 { font-size: 0.83em; font-weight: bold; margin: 0.5em 0; }
+.diff-original-content h6 { font-size: 0.67em; font-weight: bold; margin: 0.5em 0; }
+
+.diff-original-content p {
+  margin: 0.5em 0;
+}
+
+.diff-original-content strong { font-weight: bold; }
+.diff-original-content em { font-style: italic; }
+.diff-original-content u { text-decoration: underline; }
+.diff-original-content s { text-decoration: line-through; }
+
+/* AI改写结果显示区域 - 绿色主题（新内容） */
+.diff-ai-block {
+  display: block;
+  padding: 12px 16px;
+  background: #f0fdf4;
+}
+
+.diff-ai-content {
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+  /* AI内容区保持默认文字颜色 */
   color: #374151;
 }
 
-.ai-content-placeholder {
+/* 支持HTML内的块级元素 */
+.diff-ai-content p,
+.diff-ai-content h1,
+.diff-ai-content h2,
+.diff-ai-content h3,
+.diff-ai-content h4,
+.diff-ai-content h5,
+.diff-ai-content h6 {
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.diff-ai-content h1 { font-size: 2em; font-weight: bold; margin: 0.5em 0; }
+.diff-ai-content h2 { font-size: 1.5em; font-weight: bold; margin: 0.5em 0; }
+.diff-ai-content h3 { font-size: 1.17em; font-weight: bold; margin: 0.5em 0; }
+.diff-ai-content h4 { font-size: 1em; font-weight: bold; margin: 0.5em 0; }
+.diff-ai-content h5 { font-size: 0.83em; font-weight: bold; margin: 0.5em 0; }
+.diff-ai-content h6 { font-size: 0.67em; font-weight: bold; margin: 0.5em 0; }
+
+.diff-ai-content p {
+  margin: 0.5em 0;
+}
+
+.diff-ai-content strong { font-weight: bold; }
+.diff-ai-content em { font-style: italic; }
+.diff-ai-content u { text-decoration: underline; }
+.diff-ai-content s { text-decoration: line-through; }
+
+.diff-ai-content ul,
+.diff-ai-content ol {
+  margin: 0.5em 0;
+  padding-left: 2em;
+}
+
+.diff-ai-content li {
+  margin: 0.25em 0;
+}
+
+.diff-ai-placeholder {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -283,6 +394,16 @@ const handleReject = () => {
   padding: 12px 16px;
   background: #f9fafb;
   border-top: 1px solid #e5e7eb;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.2s ease, max-height 0.2s ease, padding 0.2s ease;
+}
+
+.diff-container:hover .diff-actions {
+  opacity: 1;
+  max-height: 100px;
+  padding: 12px 16px;
 }
 
 .action-btn {
@@ -316,6 +437,16 @@ const handleReject = () => {
 
 .reject-btn:hover {
   background: #dc2626;
+  color: white;
+}
+
+.keep-all-btn {
+  color: #2563eb;
+  border-color: #2563eb;
+}
+
+.keep-all-btn:hover {
+  background: #2563eb;
   color: white;
 }
 
