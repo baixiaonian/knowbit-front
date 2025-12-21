@@ -359,7 +359,7 @@
         <div v-if="aiPanelVisible" class="ai-panel" :style="{ width: aiPanelWidth + 'px' }">
           <AiChat 
             :document-content="documentContent"
-            :document-id="props.document?.id"
+            :document-id="String(props.document?.id)"
             @close="closeAiPanel"
             @insert-content="handleInsertContent"
             @apply-edit-suggestion="handleApplyEditSuggestion"
@@ -1376,104 +1376,121 @@ const handleInsertDiffNode = (editData) => {
     metadata
   } = editData
   
-  // 优先使用后端提供的originalContent作为原文
-  const originalText = originalContentFromBackend || ''
-  console.log('使用的原文:', originalText)
+  console.log('接收到的originalContent:', originalContentFromBackend)
   console.log('AI生成的新内容:', newContent)
   
-  // 查找包含该文本的节点位置
-  const { doc } = editor.value.state
-  let insertPosition = null
-  let targetNode = null
+  // 后端已经提供原始HTML格式的originalContent，直接使用
+  // 如果originalContent是HTML字符串，直接使用；如果是对象，检查是否有html字段
+  let originalContentObj = null
   
-  // 如果有originalText，在文档中查找匹配的节点
-  if (originalText) {
-    doc.descendants((node, pos) => {
-      // 查找包含目标文本的段落或标题节点
-      if (['paragraph', 'heading'].includes(node.type.name)) {
-        const nodeText = node.textContent
-        
-        // 检查节点文本是否与原文匹配（精确匹配或包含关系）
-        if (nodeText && (
-          nodeText.trim() === originalText.trim() ||
-          nodeText.includes(originalText) ||
-          originalText.includes(nodeText)
-        )) {
-          console.log('找到匹配节点:', {
-            type: node.type.name,
-            pos,
-            text: nodeText.substring(0, 100)
-          })
-          insertPosition = pos
-          targetNode = node
-          return false // 停止遍历
-        }
-      }
-    })
+  if (typeof originalContentFromBackend === 'string') {
+    // 如果是HTML字符串，提取文本内容并构造对象
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = originalContentFromBackend
+    const textContent = tempDiv.textContent || tempDiv.innerText || ''
+    originalContentObj = {
+      text: textContent,
+      html: originalContentFromBackend
+    }
+  } else if (typeof originalContentFromBackend === 'object' && originalContentFromBackend !== null) {
+    // 如果已经是对象格式，直接使用
+    originalContentObj = originalContentFromBackend
   }
   
-  // 如果没找到匹配的节点，使用offset来定位
-  if (insertPosition === null && startOffset !== undefined && endOffset !== undefined) {
-    console.log('未通过文本匹配找到节点，尝试使用offset定位')
-    const htmlContent = editor.value.getHTML()
-    console.log('HTML内容总长度:', htmlContent.length)
-    console.log('startOffset:', startOffset, 'endOffset:', endOffset)
+  console.log('构造的originalContentObj:', originalContentObj)
+  
+  // 查找包含该内容的节点位置 - 根据后端返回的originalContent确定from-to范围
+  const { doc } = editor.value.state
+  let insertPosition = null
+  let targetNodeSize = 0
+  
+  // 使用 from-to 范围来定位（根据originalContent确定）
+  console.log('=== 根据originalContent确定from-to范围 ===')
+  
+  // 策略：在文档中查找与originalContent匹配的位置
+  if (originalContentObj && originalContentObj.text) {
+    const searchText = originalContentObj.text.trim()
+    console.log('搜索文本:', searchText.substring(0, 100))
     
+    let foundFirstNode = false
+    let lastNodeEndPos = null
+    
+    // 遍历文档节点，找到所有包含该文本的节点
+    doc.descendants((node, pos) => {
+      const nodeText = node.textContent
+      
+      // 检查是否包含搜索文本的任何部分
+      if (nodeText && searchText.includes(nodeText)) {
+        if (!foundFirstNode) {
+          // 记录第一个匹配节点的位置
+          insertPosition = pos
+          foundFirstNode = true
+          console.log('找到第一个匹配节点:', {
+            type: node.type.name,
+            pos,
+            nodeText: nodeText.substring(0, 100)
+          })
+        }
+        
+        // 持续更新最后一个节点的结束位置
+        lastNodeEndPos = pos + (node.nodeSize || 0)
+        console.log('更新范围 to:', lastNodeEndPos)
+      }
+    })
+    
+    // 如果找到了匹配的节点，计算 targetNodeSize
+    if (foundFirstNode && lastNodeEndPos !== null) {
+      targetNodeSize = lastNodeEndPos - insertPosition
+      console.log('最终确定范围:', {
+        from: insertPosition,
+        to: lastNodeEndPos,
+        rangeSize: targetNodeSize
+      })
+    }
+  }
+  
+  // 最后手段：使用offset范围
+  if (insertPosition === null && startOffset !== undefined && endOffset !== undefined) {
+    console.log('=== selectedTextRange也无效，使用offset范围 ===')
+    console.log('使用 offset 范围:', { startOffset, endOffset })
+    
+    // 需要将 HTML offset 转换为 ProseMirror position
+    const htmlContent = editor.value.getHTML()
     const targetHtml = htmlContent.substring(startOffset, endOffset)
     console.log('目标HTML片段:', targetHtml)
     
-    // 从HTML中提取纯文本
+    // 从 HTML 中提取纯文本
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = targetHtml
     const extractedText = tempDiv.textContent || tempDiv.innerText || ''
     console.log('从HTML提取的文本:', extractedText)
     
-    // 再次尝试在文档中查找
+    // 在文档中查找匹配的位置
     doc.descendants((node, pos) => {
       if (['paragraph', 'heading'].includes(node.type.name)) {
         const nodeText = node.textContent
         if (nodeText && (nodeText.includes(extractedText) || extractedText.includes(nodeText))) {
-          console.log('通过offset提取的文本找到匹配节点:', {
+          console.log('通过offset找到匹配节点:', {
             type: node.type.name,
             pos,
             text: nodeText.substring(0, 100)
           })
           insertPosition = pos
-          targetNode = node
+          targetNodeSize = node.nodeSize || 0
           return false
         }
       }
     })
   }
   
+  // 如果还是找不到，使用文档末尾
   if (insertPosition === null) {
-    console.warn('未找到匹配的节点位置，将在文档末尾插入')
-    // 如果找不到精确匹配，在文档末尾插入
+    console.warn('未找到匹配位置，将在文档末尾插入')
     insertPosition = doc.content.size - 1
+    targetNodeSize = 0
   }
   
-  console.log('找到插入位置:', insertPosition)
-  
-  // 获取目标节点的HTML内容
-  let originalContentObj = null
-  if (targetNode && insertPosition !== null) {
-    // 使用 ProseMirror 的 DOMSerializer 将目标节点转换为 HTML
-    const div = document.createElement('div')
-    const serializer = editor.value.view.someProp('domSerializer') || 
-                       editor.value.view.state.schema.cached.domSerializer || 
-                       window.DOMSerializer?.fromSchema(editor.value.view.state.schema)
-    
-    if (serializer) {
-      const nodeDOM = serializer.serializeNode(targetNode)
-      div.appendChild(nodeDOM)
-    }
-    
-    originalContentObj = {
-      text: originalText,
-      html: div.innerHTML || originalText
-    }
-    console.log('生成的originalContentObj:', originalContentObj)
-  }
+  console.log('最终位置:', { from: insertPosition, to: insertPosition + targetNodeSize })
   
   // 根据operation类型决定如何插入DiffNode
   console.log('执行操作类型:', operation)
@@ -1484,10 +1501,10 @@ const handleInsertDiffNode = (editData) => {
       console.log('执行replace操作')
       editor.value.chain()
         .focus()
-        .setTextSelection({ from: insertPosition, to: insertPosition + (targetNode?.nodeSize || 0) })
+        .setTextSelection({ from: insertPosition, to: insertPosition + targetNodeSize })
         .insertDiff({
-          originalText: originalText,  // 直接使用后端提供的原文
-          originalContent: originalContentObj,  // 使用原始HTML
+          originalText: originalContentObj?.text || '',
+          originalContent: originalContentObj,
           aiText: newContent,
           diffType: 'replace'
         })
@@ -1497,10 +1514,10 @@ const handleInsertDiffNode = (editData) => {
       console.log('执行delete操作')
       editor.value.chain()
         .focus()
-        .setTextSelection({ from: insertPosition, to: insertPosition + (targetNode?.nodeSize || 0) })
+        .setTextSelection({ from: insertPosition, to: insertPosition + targetNodeSize })
         .insertDiff({
-          originalText: originalText,  // 直接使用后端提供的原文
-          originalContent: originalContentObj,  // 使用原始HTML
+          originalText: originalContentObj?.text || '',
+          originalContent: originalContentObj,
           aiText: '',
           diffType: 'delete'
         })
@@ -1508,7 +1525,7 @@ const handleInsertDiffNode = (editData) => {
     } else if (operation === 'insert_before' || operation === 'insert_after') {
       // 插入操作：使用InsertNode渲染
       console.log('执行', operation, '操作，使用InsertComponent')
-      const insertPos = operation === 'insert_before' ? insertPosition : (insertPosition + (targetNode?.nodeSize || 0))
+      const insertPos = operation === 'insert_before' ? insertPosition : (insertPosition + targetNodeSize)
       editor.value.chain()
         .focus()
         .setTextSelection(insertPos)

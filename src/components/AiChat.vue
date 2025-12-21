@@ -120,7 +120,12 @@
             </div>
           </div>
           <div class="message-content">
-            <div class="message-text" v-html="formatMessage(message.content)"></div>
+            <!-- WebSocket事件消息使用文本插值显示原始格式 -->
+            <template v-if="message.isWebSocketEvent">
+              <pre style="background:#f5f5f5;padding:12px;border-radius:6px;overflow:auto;font-family:monospace;font-size:12px;line-height:1.4;max-height:400px;border:1px solid #e0e0e0;">{{ message.content.replace(/<pre[^>]*>|<\/pre>|<code>|<\/code>/g, '') }}</pre>
+            </template>
+            <!-- 其他消息正常渲染 -->
+            <div v-else class="message-text" v-html="formatMessage(message.content)"></div>
             <div class="message-time">{{ formatTime(message.timestamp) }}</div>
             <div v-if="message.role === 'assistant'" class="message-actions">
               <button class="action-btn small" @click="insertMessageToEditor(message.content)" title="插入到编辑器">
@@ -471,8 +476,8 @@ const subscribeAgentWebSocket = (sessionId) => {
       if (message.type === 'paragraph_edit_instruction') {
         console.log('!!! 检测到paragraph_edit_instruction消息，开始处理 !!!')
         handleParagraphEditInstruction(message)
+        displayRawWebSocketMessage(message)
       } else {
-        console.log('其他消息类型:', message.type, '，显示在对话框中')
         // 其他消息继续显示在对话框中
         displayRawWebSocketMessage(message)
       }
@@ -531,7 +536,6 @@ const handleParagraphEditInstruction = (message) => {
   })
   
   // 向父组件发送插入DiffNode的事件
-  console.log('>>> 发送insert-diff-node事件给父组件 <<<')
   emit('insert-diff-node', {
     paragraphId,
     operation,
@@ -542,21 +546,7 @@ const handleParagraphEditInstruction = (message) => {
     endOffset: metadata.endOffset,
     metadata
   })
-  console.log('>>> insert-diff-node事件已发送 <<<')
   
-  // 在聊天记录中显示简要信息
-  chatMessages.value.push({
-    role: 'assistant',
-    content: `**段落编辑建议**
-
-操作类型: ${operation}
-原文: ${originalContent?.substring(0, 50)}...
-新内容: ${newContent?.substring(0, 50)}...
-理由: ${reasoning || '无'}`,
-    timestamp: new Date(),
-    isParagraphEdit: true,
-    paragraphId
-  })
   
   // 滚动到底部
   nextTick(() => {
@@ -569,12 +559,8 @@ const displayRawWebSocketMessage = (message) => {
   // 格式化JSON为可读形式
   const formattedJson = JSON.stringify(message, null, 2)
   
-  // 创建代码块显示
-  const content = `**WebSocket事件: ${message.type || 'unknown'}**
-
-\`\`\`json
-${formattedJson}
-\`\`\``
+  // 创建内容：使用<pre><code>保留原始格式（会正确显示HTML转义符）
+  const content = `<pre style="background:#f5f5f5;padding:12px;border-radius:6px;overflow:auto;font-family:monospace;font-size:12px;line-height:1.4;max-height:400px;"><code>${formattedJson}</code></pre>`
   
   // 添加到聊天消息
   chatMessages.value.push({
@@ -669,156 +655,6 @@ const sendQuickMessage = (message) => {
   sendMessage()
 }
 
-const simulateAiResponse = async (userMessage) => {
-  // 模拟AI思考时间
-  await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000))
-  
-  if (currentMode.value === 'chat') {
-    // Chat模式：提供markdown格式的建议
-    const aiResponse = generateChatResponse(userMessage)
-    chatMessages.value.push({
-      role: 'assistant',
-      content: aiResponse,
-      timestamp: new Date(),
-      mode: 'chat'
-    })
-  } else {
-    // 编辑模式：生成编辑建议
-    const editSuggestions = generateEditSuggestions(userMessage)
-    chatMessages.value.push({
-      role: 'assistant',
-      content: '我已经分析了您的请求，并生成了以下编辑建议：',
-      timestamp: new Date(),
-      mode: 'edit',
-      suggestions: editSuggestions
-    })
-    
-    // 通知父组件显示编辑建议
-    emit('apply-edit-suggestion', editSuggestions)
-  }
-}
-
-const generateChatResponse = (userMessage) => {
-  if (userMessage.includes('总结') || userMessage.includes('总结文档')) {
-    const documentText = props.documentContent.replace(/<[^>]*>/g, '').trim()
-    if (documentText) {
-      return `## 文档总结
-
-根据文档内容，我为您总结如下：
-
-> ${documentText.substring(0, 200)}${documentText.length > 200 ? '...' : ''}
-
-### 主要内容
-
-这是文档的主要内容的简要概括。如需更详细的分析，请提供更多具体信息。
-
-### 建议改进
-
-- 可以添加更多具体例子
-- 建议优化段落结构
-- 考虑添加图表说明`
-    } else {
-      return '当前文档内容为空，无法进行总结。请先添加文档内容，然后我可以帮您分析总结。'
-    }
-  } else if (userMessage.includes('改进') || userMessage.includes('表述')) {
-    return `## 文档改进建议
-
-### 当前问题
-
-根据您的描述，我发现了以下可以改进的地方：
-
-1. **语言表达**：部分句子可以更加简洁明了
-2. **逻辑结构**：建议重新组织段落顺序
-3. **内容完整性**：某些部分需要补充更多细节
-
-### 具体建议
-
-\`\`\`markdown
-# 建议的改进版本
-
-这里是改进后的内容示例...
-
-## 主要变化
-
-- 优化了开头段落
-- 增加了过渡语句
-- 完善了结论部分
-\`\`\`
-
-您可以将这些建议复制到文档中进行修改。`
-  } else if (userMessage.includes('语法') || userMessage.includes('错误')) {
-    return `## 语法检查结果
-
-### 发现的问题
-
-1. **标点符号使用**：建议统一使用中文标点
-2. **句式结构**：部分长句可以拆分
-3. **用词准确性**：某些词汇可以更加精确
-
-### 修改建议
-
-\`\`\`diff
-- 原文：这是一个很长的句子，包含了很多信息，但是可能不够清晰。
-+ 修改：这是一个包含重要信息的句子。为了确保清晰度，建议将其拆分为两个部分。
-\`\`\`
-
-### 语法要点
-
-- 注意主谓宾的一致性
-- 避免过度使用被动语态
-- 保持时态的一致性`
-  } else {
-    return `## AI助手回复
-
-我理解您的问题："${userMessage}"
-
-### 我可以帮助您
-
-- 📝 **总结和分析**文档内容
-- ✏️ **改进文字表述**和语言风格
-- ✅ **检查语法错误**和拼写
-- 💡 **提供写作建议**和灵感
-- ❓ **回答关于文档内容**的问题
-
-### 在其他模式中
-
-- **对话模式**：提供详细的markdown格式建议
-- **编辑模式**：直接在编辑器中显示修改建议
-
-请告诉我您具体需要什么帮助，我会尽力协助您！`
-  }
-}
-
-const generateEditSuggestions = (userMessage) => {
-  // 模拟生成编辑建议
-  const suggestions = []
-  
-  if (userMessage.includes('改进') || userMessage.includes('优化')) {
-    suggestions.push({
-      id: 'suggestion-1',
-      type: 'replace',
-      position: { start: 0, end: 50 },
-      originalText: '这是一段需要改进的文本内容...',
-      suggestedText: '这是一段经过优化改进的文本内容，表达更加清晰准确...',
-      reason: '优化语言表达，提高可读性',
-      confidence: 0.85
-    })
-  }
-  
-  if (userMessage.includes('语法') || userMessage.includes('错误')) {
-    suggestions.push({
-      id: 'suggestion-2',
-      type: 'insert',
-      position: { start: 100, end: 100 },
-      originalText: '',
-      suggestedText: '补充说明：',
-      reason: '添加必要的连接词，改善句子结构',
-      confidence: 0.75
-    })
-  }
-  
-  return suggestions
-}
 
 const clearChatHistory = () => {
   chatMessages.value = []
@@ -1002,7 +838,8 @@ const getStatusLabel = (status) => {
 
 // 使用共享的Markdown格式化函数
 const formatMessage = (content) => {
-  return formatMarkdownToHtml(content)
+  // 直接返回原始内容，不做任何处理
+  return content
 }
 
 const formatTime = (timestamp) => {
@@ -1062,25 +899,6 @@ const closeChat = () => {
   emit('close')
 }
 
-// 模式切换方法
-const switchMode = (mode) => {
-  if (currentMode.value === mode) return
-  
-  currentMode.value = mode
-  
-  // 切换到编辑模式时，清空之前的编辑建议
-  if (mode === 'edit') {
-    editSuggestions.value = []
-    emit('reject-edit-suggestion', []) // 清除编辑器中的建议显示
-  }
-  
-
-  
-  // 滚动到底部
-  nextTick(() => {
-    scrollToBottom()
-  })
-}
 
 // 监听文档内容变化，清空聊天历史（可选）
 watch(() => props.documentContent, () => {
