@@ -446,7 +446,7 @@ import AiChat from './AiChat.vue'
 import FloatingToolbar from './FloatingToolbar.vue'
 import ContextMenu from './ContextMenu.vue'
 import AiHelpDialog from './AiHelpDialog.vue'
-import { aiAPI } from '../services/api.js'
+import { aiAPI, uploadAPI } from '../services/api.js'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Heading } from '@tiptap/extension-heading'
@@ -656,7 +656,48 @@ onMounted(() => {
         HTMLAttributes: {
           class: 'editor-image',
         },
+        inline: true,
+        allowBase64: false,
       }),
+      // 添加粘贴处理扩展
+      {
+        name: 'imagePasteHandler',
+        addProseMirrorPlugins() {
+          return [
+            {
+              props: {
+                handlePaste: (view, event, slice) => {
+                  // 检查是否有图片文件
+                  const items = Array.from(event.clipboardData?.items || [])
+                  for (const item of items) {
+                    if (item.type.indexOf('image') === 0) {
+                      event.preventDefault()
+                      const file = item.getAsFile()
+                      if (file) {
+                        handleImageUpload(file, view)
+                      }
+                      return true
+                    }
+                  }
+                  return false
+                },
+                handleDrop: (view, event, slice, moved) => {
+                  // 检查是否有图片文件
+                  const files = Array.from(event.dataTransfer?.files || [])
+                  for (const file of files) {
+                    if (file.type.indexOf('image') === 0) {
+                      event.preventDefault()
+                      handleImageUpload(file, view)
+                      return true
+                    }
+                  }
+                  return false
+                }
+              }
+            }
+          ]
+        }
+      },
       CodeBlock,
       Blockquote,
       HorizontalRule,
@@ -1149,9 +1190,54 @@ const insertTable = () => {
 
 const insertImage = () => {
   if (!editor.value) return
-  const url = prompt('请输入图片URL：')
-  if (url) {
-    editor.value.chain().focus().setImage({ src: url }).run()
+  
+  // 创建文件选择器
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      await handleImageUpload(file, editor.value.view)
+    }
+  }
+  input.click()
+}
+
+// 处理图片上传
+const handleImageUpload = async (file, view) => {
+  try {
+    // 验证文件大小（限制为5MB）
+    const maxSize = 5 * 1024 * 1024
+    if (file.size > maxSize) {
+      alert('图片大小不能超过5MB')
+      return
+    }
+    
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      alert('只能上传图片文件')
+      return
+    }
+    
+    // 显示加载状态（可选：在光标位置插入加载提示）
+    const { state } = view
+    const { $from } = state.selection
+    
+    // 上传图片
+    const response = await uploadAPI.uploadImage(file)
+    
+    if (response && response.url) {
+      // 插入图片
+      const node = state.schema.nodes.image.create({ src: response.url })
+      const tr = state.tr.replaceSelectionWith(node)
+      view.dispatch(tr)
+    } else {
+      throw new Error('上传失败：未返回图片URL')
+    }
+  } catch (error) {
+    console.error('图片上传失败:', error)
+    alert(`图片上传失败: ${error.message || '未知错误'}`)
   }
 }
 
@@ -3154,10 +3240,20 @@ onUnmounted(() => {
 :deep(.ProseMirror img) {
   max-width: 100%;
   height: auto;
+  display: block;
+  margin: 16px auto;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+:deep(.ProseMirror img:hover) {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 :deep(.ProseMirror img.ProseMirror-selectednode) {
   outline: 3px solid #68cef8;
+  box-shadow: 0 4px 12px rgba(104, 206, 248, 0.3);
 }
 
 /* 拖拽手柄 */
