@@ -1371,13 +1371,11 @@ const handleInsertDiffNode = (editData) => {
     originalContent: originalContentFromBackend,
     newContent,
     reasoning,
-    startOffset,
-    endOffset,
     metadata
   } = editData
   
   console.log('接收到的originalContent:', originalContentFromBackend)
-  console.log('AI生成的新内容:', newContent)
+  // console.log('AI生成的新内容:', newContent)
   
   // 后端已经提供原始HTML格式的originalContent，直接使用
   // 如果originalContent是HTML字符串，直接使用；如果是对象，检查是否有html字段
@@ -1404,11 +1402,25 @@ const handleInsertDiffNode = (editData) => {
   let insertPosition = null
   let targetNodeSize = 0
   
-  // 使用 from-to 范围来定位（根据originalContent确定）
-  console.log('=== 根据originalContent确定from-to范围 ===')
-  
-  // 策略：在文档中查找与originalContent匹配的位置
-  if (originalContentObj && originalContentObj.text) {
+  // 对于insert_before和insert_after操作，如果没有originalContent，使用文档开头或末尾
+  if ((operation === 'insert_before' || operation === 'insert_after') && !originalContentObj) {
+    console.log('=== 插入操作且没有originalContent，使用文档开头/末尾 ===')
+    
+    if (operation === 'insert_before') {
+      // insert_before: 在文档最前面插入
+      console.log('insert_before: 在文档最前面插入')
+      insertPosition = 0
+      targetNodeSize = 0
+    } else {
+      // insert_after: 在文档最后面插入
+      console.log('insert_after: 在文档最后面插入')
+      insertPosition = doc.content.size - 1
+      targetNodeSize = 0
+    }
+  } else if (originalContentObj && originalContentObj.text) {
+    // 有originalContent的情况，使用内容匹配
+    console.log('=== 根据originalContent确定from-to范围 ===')
+    
     const searchText = originalContentObj.text.trim()
     console.log('搜索文本:', searchText.substring(0, 100))
     
@@ -1449,40 +1461,7 @@ const handleInsertDiffNode = (editData) => {
     }
   }
   
-  // 最后手段：使用offset范围
-  if (insertPosition === null && startOffset !== undefined && endOffset !== undefined) {
-    console.log('=== selectedTextRange也无效，使用offset范围 ===')
-    console.log('使用 offset 范围:', { startOffset, endOffset })
-    
-    // 需要将 HTML offset 转换为 ProseMirror position
-    const htmlContent = editor.value.getHTML()
-    const targetHtml = htmlContent.substring(startOffset, endOffset)
-    console.log('目标HTML片段:', targetHtml)
-    
-    // 从 HTML 中提取纯文本
-    const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = targetHtml
-    const extractedText = tempDiv.textContent || tempDiv.innerText || ''
-    console.log('从HTML提取的文本:', extractedText)
-    
-    // 在文档中查找匹配的位置
-    doc.descendants((node, pos) => {
-      if (['paragraph', 'heading'].includes(node.type.name)) {
-        const nodeText = node.textContent
-        if (nodeText && (nodeText.includes(extractedText) || extractedText.includes(nodeText))) {
-          console.log('通过offset找到匹配节点:', {
-            type: node.type.name,
-            pos,
-            text: nodeText.substring(0, 100)
-          })
-          insertPosition = pos
-          targetNodeSize = node.nodeSize || 0
-          return false
-        }
-      }
-    })
-  }
-  
+
   // 如果还是找不到，使用文档末尾
   if (insertPosition === null) {
     console.warn('未找到匹配位置，将在文档末尾插入')

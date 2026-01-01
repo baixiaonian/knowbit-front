@@ -460,9 +460,15 @@ const callAgentAPI = async (userPrompt) => {
   }
 }
 
+// 流式消息缓存：存储每个run_id对应的消息索引和内容
+const streamMessageCache = ref(new Map())
+
 // 订阅智能体WebSocket事件
 const subscribeAgentWebSocket = (sessionId) => {
   console.log('订阅智能体WebSocket事件, sessionId:', sessionId)
+  
+  // 清空流式消息缓存
+  streamMessageCache.value.clear()
   
   // 创建WebSocket连接
   agentWebSocket.value = agentAPI.subscribeAgentEvents(
@@ -477,6 +483,9 @@ const subscribeAgentWebSocket = (sessionId) => {
         console.log('!!! 检测到paragraph_edit_instruction消息，开始处理 !!!')
         handleParagraphEditInstruction(message)
         displayRawWebSocketMessage(message)
+      } else if (message.type === 'llm_stream_token') {
+        // 处理流式token
+        handleStreamToken(message)
       } else {
         // 其他消息继续显示在对话框中
         displayRawWebSocketMessage(message)
@@ -497,8 +506,62 @@ const subscribeAgentWebSocket = (sessionId) => {
     () => {
       console.log('智能体WebSocket连接已关闭')
       aiStatus.value = 'online'
+      // 清空流式消息缓存
+      streamMessageCache.value.clear()
     }
   )
+}
+
+// 处理流式token消息
+const handleStreamToken = (message) => {
+  // console.log('处理流式token:', message)
+  
+  const data = message.data
+  if (!data || !data.run_id || data.token === undefined) {
+    console.error('llm_stream_token消息格式错误', message)
+    return
+  }
+  
+  const { token, run_id } = data
+  
+  // 查找或创建该run_id对应的消息
+  let cacheEntry = streamMessageCache.value.get(run_id)
+  
+  if (!cacheEntry) {
+    // 第一次收到该run_id的token，创建新消息
+    const newMessage = {
+      role: 'assistant',
+      content: token,
+      timestamp: new Date(),
+      isStreaming: true,
+      run_id: run_id
+    }
+    
+    chatMessages.value.push(newMessage)
+    const messageIndex = chatMessages.value.length - 1
+    
+    // 缓存消息索引和内容
+    streamMessageCache.value.set(run_id, {
+      index: messageIndex,
+      content: token
+    })
+    
+    // console.log(`创建新的流式消息，run_id: ${run_id}, 初始内容: "${token}"`)
+  } else {
+    // 已存在该run_id的消息，追加token
+    cacheEntry.content += token
+    
+    const messageIndex = cacheEntry.index
+    if (messageIndex >= 0 && messageIndex < chatMessages.value.length) {
+      chatMessages.value[messageIndex].content = cacheEntry.content
+      // console.log(`追加token到消息，run_id: ${run_id}, 当前内容: "${cacheEntry.content}"`)
+    }
+  }
+  
+  // 滚动到底部
+  nextTick(() => {
+    scrollToBottom()
+  })
 }
 
 // 处理paragraph_edit_instruction指令
@@ -520,33 +583,31 @@ const handleParagraphEditInstruction = (message) => {
     metadata
   } = data
   
-  // 验证必须字段（注意：startOffset可能为0，所以使用 !== undefined）
-  if (!metadata || metadata.startOffset === undefined || metadata.endOffset === undefined) {
-    console.error('paragraph_edit_instruction消息缺少startOffset或endOffset', metadata)
+  // 验证必须字段：对于replace和delete操作，originalContent是必须的
+  // 对于insert_before和insert_after操作，originalContent可能为空
+  if ((operation === 'replace' || operation === 'delete') && !originalContent) {
+    console.error(`${operation}操作缺少originalContent字段`)
     return
   }
   
   console.log('准备插入DiffNode:', {
     paragraphId,
     operation,
-    startOffset: metadata.startOffset,
-    endOffset: metadata.endOffset,
     originalContent,
-    newContent
+    newContent,
+    reasoning
   })
   
-  // 向父组件发送插入DiffNode的事件
+  // 后端现在返回的是HTML原始格式，不再需要startOffset和endOffset
+  // 将originalContent传递给父组件，由父组件进行匹配定位
   emit('insert-diff-node', {
     paragraphId,
     operation,
     originalContent: originalContent || '',
     newContent: newContent || '',
     reasoning,
-    startOffset: metadata.startOffset,
-    endOffset: metadata.endOffset,
     metadata
   })
-  
   
   // 滚动到底部
   nextTick(() => {
@@ -660,6 +721,7 @@ const clearChatHistory = () => {
   chatMessages.value = []
   conversationId.value = null // 清空会话 ID
   references.value = [] // 清空引用
+  streamMessageCache.value.clear() // 清空流式消息缓存
   
   // 关闭智能体WebSocket连接
   if (agentWebSocket.value) {
