@@ -6,6 +6,12 @@
         <span class="current-session-title">{{ getCurrentSessionTitle() }}</span>
       </div>
       <div class="top-actions">
+        <button class="icon-btn" @click="toggleDebugPanel" title="调试面板" :class="{ 'active': showDebugPanel }">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
         <button class="icon-btn" @click="createNewSession" title="新建会话">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -97,6 +103,37 @@
       </div>
     </div>
 
+    <!-- 调试面板 -->
+    <div v-if="showDebugPanel" class="debug-panel">
+      <div class="debug-header">
+        <h4>WebSocket 消息调试</h4>
+        <button class="clear-debug-btn" @click="clearDebugMessages" title="清空">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M3 6h18"></path>
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="debug-content">
+        <div v-if="debugMessages.length === 0" class="debug-empty">
+          暂无消息
+        </div>
+        <div v-else class="debug-messages">
+          <div 
+            v-for="(msg, index) in debugMessages" 
+            :key="index"
+            class="debug-message-item"
+          >
+            <div class="debug-message-header">
+              <span class="debug-message-type" :class="'type-' + msg.type">{{ msg.type }}</span>
+              <span class="debug-message-time">{{ formatDebugTime(msg.timestamp) }}</span>
+            </div>
+            <pre class="debug-message-content">{{ msg.content }}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 聊天消息区域 -->
     <div class="chat-container" ref="chatContainer">
       <div class="chat-messages" v-if="chatMessages.length > 0">
@@ -104,52 +141,46 @@
           v-for="(message, index) in chatMessages" 
           :key="index" 
           class="message-item"
-          :class="{ 'user-message': message.role === 'user', 'ai-message': message.role === 'assistant' }"
+          :class="{ 
+            'user-message': message.type === 'user',
+            'tool-call-message': message.type === 'tool_call',
+            'llm-stream-message': message.type === 'llm_stream'
+          }"
         >
-          <div class="message-avatar">
-            <div v-if="message.role === 'user'" class="user-avatar">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
-            </div>
-            <div v-else class="ai-avatar-small">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-              </svg>
-            </div>
+          <!-- 用户消息 -->
+          <div v-if="message.type === 'user'" class="user-message-text">
+            {{ message.content }}
           </div>
-          <div class="message-content">
-            <!-- WebSocket事件消息使用文本插值显示原始格式 -->
-            <template v-if="message.isWebSocketEvent">
-              <pre style="background:#f5f5f5;padding:12px;border-radius:6px;overflow:auto;font-family:monospace;font-size:12px;line-height:1.4;max-height:400px;border:1px solid #e0e0e0;">{{ message.content.replace(/<pre[^>]*>|<\/pre>|<code>|<\/code>/g, '') }}</pre>
-            </template>
-            <!-- 其他消息正常渲染 -->
-            <div v-else class="message-text" v-html="formatMessage(message.content)"></div>
-            <div class="message-time">{{ formatTime(message.timestamp) }}</div>
-            <div v-if="message.role === 'assistant'" class="message-actions">
-              <button class="action-btn small" @click="insertMessageToEditor(message.content)" title="插入到编辑器">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14,2 14,8 20,8"></polyline>
-                  <line x1="16" y1="13" x2="8" y2="13"></line>
-                  <line x1="16" y1="17" x2="8" y2="17"></line>
-                  <polyline points="10,9 9,9 8,9"></polyline>
-                </svg>
-              </button>
-              <button class="action-btn small" @click="copyMessage(message.content)" title="复制">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-              </button>
+          
+          <!-- 工具调用消息 -->
+          <div v-if="message.type === 'tool_call'" class="tool-call-text">
+            <svg class="tool-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+            </svg>
+            {{ message.content }}
+          </div>
+          
+          <!-- LLM流式消息 -->
+          <div v-else-if="message.type === 'llm_stream'" class="llm-stream-text">
+            {{ message.content }}
+          </div>
+        </div>
+        
+        <!-- 等待中状态 -->
+        <div v-if="isSessionActive && !isProducingContent" class="message-item waiting-message">
+          <div class="waiting-indicator">
+            <div class="typing-dots">
+              <span></span>
+              <span></span>
+              <span></span>
             </div>
+            <span class="waiting-text">AI正在思考中...</span>
           </div>
         </div>
       </div>
       
       <!-- 空状态 -->
-      <div v-else class="chat-empty">
+      <div v-else-if="chatMessages.length === 0" class="chat-empty">
         <div class="empty-icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -168,16 +199,6 @@
             检查语法
           </button>
         </div>
-      </div>
-
-      <!-- 正在输入指示器 -->
-      <div v-if="aiStatus === 'typing'" class="typing-indicator">
-        <div class="typing-dots">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-        <span class="typing-text">AI正在思考...</span>
       </div>
     </div>
 
@@ -298,6 +319,10 @@ const conversationId = ref(null) // 会话 ID，用于多轮对话
 const agentSessionId = ref(null) // 智能体会话 ID
 const agentWebSocket = ref(null) // 智能体WebSocket连接
 const currentSessionId = ref(null) // 当前选中的会话 ID
+const isSessionActive = ref(false) // 会话是否激活（未收到session_closed）
+const lastMessageTime = ref(null) // 最后一次收到消息的时间
+const isProducingContent = ref(false) // 是否正在产出内容（收到token、工具调用、编辑指令时为true）
+let contentDebounceTimer = null // 内容防抖定时器
 
 // 会话管理相关数据
 const showSessionList = ref(false) // 是否显示会话列表
@@ -313,6 +338,10 @@ const editSuggestions = ref([]) // 编辑模式的建议列表
 
 // 引用管理相关数据
 const references = ref([]) // 引用文本列表
+
+// 调试相关数据
+const showDebugPanel = ref(false) // 是否显示调试面板
+const debugMessages = ref([]) // 调试消息列表
 
 // 获取当前会话标题
 const getCurrentSessionTitle = () => {
@@ -331,16 +360,15 @@ const getCurrentSessionTitle = () => {
 const sendMessage = async () => {
   if (!currentMessage.value.trim() || aiStatus.value === 'typing') return
   
-  const userMessage = {
-    role: 'user',
-    content: currentMessage.value.trim(),
-    references: references.value.length > 0 ? references.value : undefined,
-    timestamp: new Date()
-  }
-  
-  // 添加用户消息
-  chatMessages.value.push(userMessage)
   const messageText = currentMessage.value.trim()
+  
+  // 添加用户消息到聊天记录
+  chatMessages.value.push({
+    type: 'user',
+    content: messageText,
+    timestamp: new Date()
+  })
+  
   currentMessage.value = ''
   
   // 滚动到底部
@@ -350,6 +378,9 @@ const sendMessage = async () => {
   
   // 设置AI为输入状态
   aiStatus.value = 'typing'
+  isSessionActive.value = true // 启动会话
+  lastMessageTime.value = Date.now() // 记录发送时间
+  isProducingContent.value = false // 刚发送消息，还未收到内容
   
   try {
     // 根据模式调用不同API
@@ -364,13 +395,14 @@ const sendMessage = async () => {
     console.error('AI回复失败:', error)
     // 添加错误消息
     chatMessages.value.push({
-      role: 'assistant',
+      type: 'llm_stream',
       content: '抱歉，我暂时无法回复您的消息，请稍后再试。',
-      timestamp: new Date(),
-      isError: true
+      timestamp: new Date()
     })
-  } finally {
     aiStatus.value = 'online'
+    isSessionActive.value = false
+    isProducingContent.value = false
+  } finally {
     nextTick(() => {
       scrollToBottom()
     })
@@ -439,10 +471,9 @@ const callAgentAPI = async (userPrompt) => {
     } else {
       console.error('响应中未找到sessionId:', response)
       chatMessages.value.push({
-        role: 'assistant',
+        type: 'llm_stream',
         content: '智能体API响应中未包含sessionId，无法建立WebSocket连接',
-        timestamp: new Date(),
-        isError: true
+        timestamp: new Date()
       })
       aiStatus.value = 'online'
     }
@@ -451,10 +482,9 @@ const callAgentAPI = async (userPrompt) => {
     console.error('调用智能体API失败:', error)
     // 添加错误消息
     chatMessages.value.push({
-      role: 'assistant',
+      type: 'llm_stream',
       content: `智能体API调用失败: ${error.message}`,
-      timestamp: new Date(),
-      isError: true
+      timestamp: new Date()
     })
     aiStatus.value = 'online'
   }
@@ -462,6 +492,15 @@ const callAgentAPI = async (userPrompt) => {
 
 // 流式消息缓存：存储每个run_id对应的消息索引和内容
 const streamMessageCache = ref(new Map())
+
+// 工具名称映射
+const toolNameMap = {
+  'paragraph_editor': '文档编辑工具',
+  'document_reader': '文档阅读工具',
+  'search_tool': '搜索工具',
+  'knowledge_base': '知识库工具'
+  // 可以根据实际情况添加更多工具映射
+}
 
 // 订阅智能体WebSocket事件
 const subscribeAgentWebSocket = (sessionId) => {
@@ -478,38 +517,103 @@ const subscribeAgentWebSocket = (sessionId) => {
       console.log('=== 收到智能体WebSocket消息 ===', message)
       console.log('消息类型:', message.type)
       
+      // 添加到调试面板
+      debugMessages.value.push({
+        type: message.type,
+        content: JSON.stringify(message, null, 2),
+        timestamp: new Date()
+      })
+      // 限制调试消息数量，最多保留50条
+      if (debugMessages.value.length > 50) {
+        debugMessages.value.shift()
+      }
+      
       // 处理不同类型的消息
       if (message.type === 'paragraph_edit_instruction') {
         console.log('!!! 检测到paragraph_edit_instruction消息，开始处理 !!!')
+        lastMessageTime.value = Date.now() // 更新消息时间
+        isProducingContent.value = true // 正在产出内容
         handleParagraphEditInstruction(message)
-        displayRawWebSocketMessage(message)
+        // 处理完段落编辑后自动保存文档
+        console.log('段落编辑处理完成，触发文档保存')
+        emit('save-before-agent')
+        // 编辑指令处理完毕，重置为等待状态
+        setTimeout(() => {
+          isProducingContent.value = false
+        }, 100)
+        // 不再显示原始消息
       } else if (message.type === 'llm_stream_token') {
         // 处理流式token
+        lastMessageTime.value = Date.now() // 更新消息时间
+        isProducingContent.value = true // 正在产出内容
         handleStreamToken(message)
-      } else {
-        // 其他消息继续显示在对话框中
-        displayRawWebSocketMessage(message)
+      } else if (message.type === 'agent_action') {
+        // 处理agent_action消息
+        lastMessageTime.value = Date.now() // 更新消息时间
+        isProducingContent.value = true // 正在产出内容
+        handleAgentAction(message)
+        // 工具调用显示后，短暂延迟后重置为等待状态
+        setTimeout(() => {
+          isProducingContent.value = false
+        }, 100)
+      } else if (message.type === 'session_closed' || message.type === 'agent_complete') {
+        // 会话关闭或完成事件，设置状态为在线
+        aiStatus.value = 'online'
+        isSessionActive.value = false // 会话结束
+        lastMessageTime.value = null
+        isProducingContent.value = false
       }
+      // 其他消息不再显示
     },
     // onError - 错误
     (error) => {
       console.error('智能体WebSocket错误:', error)
       chatMessages.value.push({
-        role: 'assistant',
+        type: 'llm_stream',
         content: `WebSocket连接错误: ${error.message || '未知错误'}`,
-        timestamp: new Date(),
-        isError: true
+        timestamp: new Date()
       })
       aiStatus.value = 'online'
+      isSessionActive.value = false
+      isProducingContent.value = false
     },
     // onClose - 关闭
     () => {
       console.log('智能体WebSocket连接已关闭')
       aiStatus.value = 'online'
+      isSessionActive.value = false
+      lastMessageTime.value = null
+      isProducingContent.value = false
       // 清空流式消息缓存
       streamMessageCache.value.clear()
     }
   )
+}
+
+// 处理agent_action消息
+const handleAgentAction = (message) => {
+  console.log('处理agent_action消息:', message)
+  
+  const data = message.data
+  if (!data || !data.tool) {
+    console.error('agent_action消息格式错误', message)
+    return
+  }
+  
+  const { tool } = data
+  const toolName = toolNameMap[tool] || tool
+  
+  // 添加工具调用提示消息
+  chatMessages.value.push({
+    type: 'tool_call',
+    content: `正在调用${toolName}...`,
+    timestamp: new Date()
+  })
+  
+  // 滚动到底部
+  nextTick(() => {
+    scrollToBottom()
+  })
 }
 
 // 处理流式token消息
@@ -530,10 +634,9 @@ const handleStreamToken = (message) => {
   if (!cacheEntry) {
     // 第一次收到该run_id的token，创建新消息
     const newMessage = {
-      role: 'assistant',
+      type: 'llm_stream',
       content: token,
       timestamp: new Date(),
-      isStreaming: true,
       run_id: run_id
     }
     
@@ -557,6 +660,16 @@ const handleStreamToken = (message) => {
       // console.log(`追加token到消息，run_id: ${run_id}, 当前内容: "${cacheEntry.content}"`)
     }
   }
+  
+  // 清除之前的防抖定时器
+  if (contentDebounceTimer) {
+    clearTimeout(contentDebounceTimer)
+  }
+  
+  // 设置一个防抖定时器，500ms后如果没有新token，则重置为等待状态
+  contentDebounceTimer = setTimeout(() => {
+    isProducingContent.value = false
+  }, 500)
   
   // 滚动到底部
   nextTick(() => {
@@ -615,33 +728,10 @@ const handleParagraphEditInstruction = (message) => {
   })
 }
 
-// 在对话框中显示原始WebSocket消息
-const displayRawWebSocketMessage = (message) => {
-  // 格式化JSON为可读形式
-  const formattedJson = JSON.stringify(message, null, 2)
-  
-  // 创建内容：使用<pre><code>保留原始格式（会正确显示HTML转义符）
-  const content = `<pre style="background:#f5f5f5;padding:12px;border-radius:6px;overflow:auto;font-family:monospace;font-size:12px;line-height:1.4;max-height:400px;"><code>${formattedJson}</code></pre>`
-  
-  // 添加到聊天消息
-  chatMessages.value.push({
-    role: 'assistant',
-    content: content,
-    timestamp: new Date(),
-    isWebSocketEvent: true,
-    eventType: message.type
-  })
-  
-  // 滚动到底部
-  nextTick(() => {
-    scrollToBottom()
-  })
-  
-  // 如果收到 session_closed 或 agent_complete 事件，设置状态为在线
-  if (message.type === 'session_closed' || message.type === 'agent_complete') {
-    aiStatus.value = 'online'
-  }
-}
+// 在对话框中显示原始WebSocket消息（已废弃，不再使用）
+// const displayRawWebSocketMessage = (message) => {
+//   // 不再显示原始消息
+// }
 
 // 调用AI问答流式API
 const callAiChatAPI = (question) => {
@@ -657,7 +747,7 @@ const callAiChatAPI = (question) => {
   
   // 创建AI回复消息（先创建，后续流式更新）
   let assistantMessage = {
-    role: 'assistant',
+    type: 'llm_stream',
     content: '',
     timestamp: new Date()
   }
@@ -678,7 +768,7 @@ const callAiChatAPI = (question) => {
       // 更新最后一条AI消息的内容
       if (chatMessages.value.length > 0) {
         const lastMessage = chatMessages.value[chatMessages.value.length - 1]
-        if (lastMessage.role === 'assistant') {
+        if (lastMessage.type === 'llm_stream') {
           lastMessage.content = content
         }
       }
@@ -702,9 +792,8 @@ const callAiChatAPI = (question) => {
       // 更新错误消息
       if (chatMessages.value.length > 0) {
         const lastMessage = chatMessages.value[chatMessages.value.length - 1]
-        if (lastMessage.role === 'assistant') {
+        if (lastMessage.type === 'llm_stream') {
           lastMessage.content = error.message || '抱歉，AI问答服务暂时不可用。'
-          lastMessage.isError = true
         }
       }
     }
@@ -722,6 +811,12 @@ const clearChatHistory = () => {
   conversationId.value = null // 清空会话 ID
   references.value = [] // 清空引用
   streamMessageCache.value.clear() // 清空流式消息缓存
+  
+  // 重置会话状态
+  isSessionActive.value = false
+  lastMessageTime.value = null
+  aiStatus.value = 'online'
+  isProducingContent.value = false
   
   // 关闭智能体WebSocket连接
   if (agentWebSocket.value) {
@@ -763,14 +858,50 @@ const loadSessionMessages = async (sessionId) => {
     currentSessionId.value = sessionId
     agentSessionId.value = sessionId
     
+    // 重置会话状态（加载历史会话不启动等待状态）
+    isSessionActive.value = false
+    lastMessageTime.value = null
+    aiStatus.value = 'online'
+    isProducingContent.value = false
+    
     // 转换消息格式，从后端加载历史消息
     if (response.messages && Array.isArray(response.messages)) {
-      chatMessages.value = response.messages.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-        timestamp: new Date(msg.createdAt)
-      }))
+      chatMessages.value = response.messages.map(msg => {
+        // 判断消息类型
+        if (msg.role === 'user') {
+          // 用户消息
+          return {
+            type: 'user',
+            content: msg.content,
+            timestamp: new Date(msg.createdAt)
+          }
+        } else if (!msg.content && msg.toolName) {
+          // 工具调用消息：content为空且toolName有值
+          const toolName = toolNameMap[msg.toolName] || msg.toolName
+          console.log(`检测到历史工具调用消息: toolName=${msg.toolName}, 显示为: ${toolName}`)
+          return {
+            type: 'tool_call',
+            content: `正在调用${toolName}...`,
+            timestamp: new Date(msg.createdAt),
+            toolName: msg.toolName
+          }
+        } else {
+          // AI回复消息
+          return {
+            type: 'llm_stream',
+            content: msg.content || '',
+            timestamp: new Date(msg.createdAt)
+          }
+        }
+      })
       console.log(`加载了 ${chatMessages.value.length} 条历史消息`)
+      
+      // 输出消息类型统计
+      const typeCount = chatMessages.value.reduce((acc, msg) => {
+        acc[msg.type] = (acc[msg.type] || 0) + 1
+        return acc
+      }, {})
+      console.log('历史消息类型统计:', typeCount)
     } else {
       chatMessages.value = []
     }
@@ -784,10 +915,13 @@ const loadSessionMessages = async (sessionId) => {
     })
   } catch (error) {
     console.error('加载会话详情失败:', error)
-    // 即使加载失败，也设置当前会话ID，以便继续对话
+    // 即使加载失败，也设置当前会话 ID，以便继续对话
     currentSessionId.value = sessionId
     agentSessionId.value = sessionId
     chatMessages.value = []
+    isSessionActive.value = false
+    lastMessageTime.value = null
+    isProducingContent.value = false
   }
 }
 
@@ -968,6 +1102,19 @@ watch(() => props.documentContent, () => {
   // clearChatHistory()
 })
 
+// 监听会话状态，确保在会话激活期间保持typing状态
+watch([isSessionActive, lastMessageTime], ([active, _]) => {
+  if (active) {
+    // 会话激活中，保持typing状态
+    aiStatus.value = 'typing'
+  } else {
+    // 会话结束，设置为online
+    if (aiStatus.value === 'typing') {
+      aiStatus.value = 'online'
+    }
+  }
+})
+
 // 监听添加引用事件
 onMounted(() => {
   window.addEventListener('add-reference-to-chat', handleAddReferenceToChat)
@@ -976,6 +1123,12 @@ onMounted(() => {
 // 组件卸载时关闭WebSocket连接
 onUnmounted(() => {
   window.removeEventListener('add-reference-to-chat', handleAddReferenceToChat)
+  
+  // 清除防抖定时器
+  if (contentDebounceTimer) {
+    clearTimeout(contentDebounceTimer)
+    contentDebounceTimer = null
+  }
   
   // 关闭智能体WebSocket连接
   if (agentWebSocket.value) {
@@ -1016,6 +1169,20 @@ const getSourceLabel = (source) => {
     'file_upload': '文件上传'
   }
   return labels[source] || '未知来源'
+}
+
+// 调试面板相关方法
+const toggleDebugPanel = () => {
+  showDebugPanel.value = !showDebugPanel.value
+}
+
+const clearDebugMessages = () => {
+  debugMessages.value = []
+}
+
+const formatDebugTime = (timestamp) => {
+  const time = new Date(timestamp)
+  return time.toLocaleTimeString('zh-CN', { hour12: false })
 }
 </script>
 
@@ -1136,95 +1303,69 @@ const getSourceLabel = (source) => {
 .chat-messages {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 4px;
 }
 
 .message-item {
+  /* 消息项不需要额外间距，由gap控制 */
+}
+
+/* 用户消息样式 */
+.user-message {
+  padding: 8px 0;
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  justify-content: flex-end;
 }
 
-.message-avatar {
-  flex-shrink: 0;
-  margin-top: 4px;
-}
-
-.user-avatar {
-  width: 24px;
-  height: 24px;
-  background: #409eff;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-}
-
-.ai-avatar-small {
-  width: 24px;
-  height: 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-}
-
-.message-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.message-text {
-  background: white;
-  padding: 12px 16px;
-  border-radius: 12px;
+.user-message-text {
+  display: inline-block;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: #303133;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   word-wrap: break-word;
-}
-
-.user-message .message-text {
-  background: #409eff;
-  color: white;
-  margin-left: auto;
+  white-space: pre-wrap;
+  padding: 10px 16px;
+  background: #e3f2fd;
+  border-radius: 8px;
+  border-left: 3px solid #2196f3;
   max-width: 80%;
-}
-
-.ai-message .message-text {
-  background: white;
-  border: 1px solid #e4e7ed;
-}
-
-.message-time {
-  font-size: 11px;
-  color: #909399;
-  margin-top: 4px;
-  text-align: right;
-}
-
-.user-message .message-time {
-  text-align: right;
-}
-
-.ai-message .message-time {
   text-align: left;
 }
 
-.message-actions {
-  display: flex;
-  gap: 4px;
-  margin-top: 8px;
-  opacity: 0;
-  transition: opacity 0.2s;
+/* 工具调用消息样式 */
+.tool-call-message {
+  padding: 8px 0;
 }
 
-.ai-message:hover .message-actions {
-  opacity: 1;
+.tool-call-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #909399;
+  font-style: italic;
+  padding: 6px 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  border-left: 3px solid #409eff;
+}
+
+.tool-icon {
+  flex-shrink: 0;
+  color: #409eff;
+}
+
+/* LLM流式消息样式 */
+.llm-stream-message {
+  padding: 4px 0;
+}
+
+.llm-stream-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #303133;
+  word-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 /* 空状态 */
@@ -1280,7 +1421,28 @@ const getSourceLabel = (source) => {
   color: #409eff;
 }
 
-/* 正在输入指示器 */
+/* 等待中状态 */
+.waiting-message {
+  padding: 8px 0;
+}
+
+.waiting-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  border-left: 3px solid #409eff;
+}
+
+.waiting-text {
+  font-size: 13px;
+  color: #909399;
+  font-style: italic;
+}
+
+/* 正在输入指示器（保留用于其他地方） */
 .typing-indicator {
   display: flex;
   align-items: center;
@@ -1613,89 +1775,6 @@ const getSourceLabel = (source) => {
   100% { transform: rotate(360deg); }
 }
 
-/* Markdown 样式 */
-.ai-message .message-text :deep(h1) {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 12px 0 8px 0;
-  color: #303133;
-}
-
-.ai-message .message-text :deep(h2) {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 10px 0 6px 0;
-  color: #303133;
-}
-
-.ai-message .message-text :deep(h3) {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 8px 0 4px 0;
-  color: #303133;
-}
-
-.ai-message .message-text :deep(p) {
-  margin: 8px 0;
-  line-height: 1.6;
-}
-
-.ai-message .message-text :deep(ul) {
-  margin: 8px 0;
-  padding-left: 20px;
-}
-
-.ai-message .message-text :deep(li) {
-  margin: 4px 0;
-  line-height: 1.5;
-}
-
-.ai-message .message-text :deep(strong) {
-  font-weight: 600;
-  color: #303133;
-}
-
-.ai-message .message-text :deep(em) {
-  font-style: italic;
-}
-
-.ai-message .message-text :deep(code) {
-  background: #f5f7fa;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  color: #e83e8c;
-}
-
-.ai-message .message-text :deep(blockquote) {
-  border-left: 3px solid #e4e7ed;
-  padding-left: 12px;
-  margin: 8px 0;
-  color: #606266;
-  font-style: italic;
-}
-
-.ai-message .message-text :deep(hr) {
-  border: none;
-  border-top: 1px solid #e4e7ed;
-  margin: 12px 0;
-}
-
-.ai-message .message-text :deep(pre) {
-  background: #f5f7fa;
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-
-.ai-message .message-text :deep(pre code) {
-  background: none;
-  padding: 0;
-  color: #303133;
-}
-
 /* 会话列表面板 */
 .session-list-panel {
   border-bottom: 1px solid #e4e7ed;
@@ -1891,5 +1970,131 @@ const getSourceLabel = (source) => {
 
 .session-item:hover .session-actions {
   opacity: 1;
+}
+
+/* 调试面板 */
+.debug-panel {
+  border-bottom: 1px solid #e4e7ed;
+  background: #fafafa;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4e7ed;
+  background: #fff3cd;
+}
+
+.debug-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #856404;
+}
+
+.clear-debug-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #856404;
+  transition: all 0.2s;
+}
+
+.clear-debug-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.debug-content {
+  flex: 1;
+  overflow-y: auto;
+  background: #ffffff;
+}
+
+.debug-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #909399;
+  font-size: 13px;
+}
+
+.debug-messages {
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-message-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.debug-message-item:last-child {
+  border-bottom: none;
+}
+
+.debug-message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.debug-message-type {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.debug-message-type.type-paragraph_edit_instruction {
+  background: #e7f3ff;
+  color: #0066cc;
+}
+
+.debug-message-type.type-llm_stream_token {
+  background: #f0f9ff;
+  color: #0284c7;
+}
+
+.debug-message-type.type-agent_action {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.debug-message-type.type-session_closed,
+.debug-message-type.type-agent_complete {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.debug-message-time {
+  font-size: 11px;
+  color: #909399;
+  font-family: monospace;
+}
+
+.debug-message-content {
+  margin: 0;
+  padding: 8px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-x: auto;
+  max-height: 200px;
+  color: #495057;
+  font-family: 'Courier New', monospace;
 }
 </style>
