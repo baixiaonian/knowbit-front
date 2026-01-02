@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>收藏到AI笔记</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 头部 -->
+    <div class="header">
+      <h2>📚 收藏到AI笔记</h2>
+    </div>
+
+    <!-- 未登录状态 -->
+    <div id="not-logged-in" class="section" style="display: none;">
+      <div class="info-box">
+        <p>请先登录AI笔记系统</p>
+        <input type="text" id="token-input" placeholder="请输入Token" />
+        <button id="login-btn" class="primary-btn">登录</button>
+        <div class="tips">
+          <small>在AI笔记网站登录后，从浏览器开发者工具的localStorage中获取auth_token</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- 已登录状态 -->
+    <div id="logged-in" class="section" style="display: none;">
+      <!-- 页面信息 -->
+      <div class="page-info">
+        <div class="info-item">
+          <label>标题:</label>
+          <span id="page-title">-</span>
+        </div>
+        <div class="info-item">
+          <label>来源:</label>
+          <span id="page-url">-</span>
+        </div>
+      </div>
+
+      <!-- 文件夹选择 -->
+      <div class="folder-section">
+        <label>选择文件夹:</label>
+        <div id="folder-tree" class="folder-tree">
+          <div class="loading">加载中...</div>
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="actions">
+        <button id="collect-btn" class="primary-btn" disabled>
+          <span class="btn-text">收藏</span>
+          <span class="btn-loading" style="display: none;">收藏中...</span>
+        </button>
+        <button id="logout-btn" class="secondary-btn">退出登录</button>
+      </div>
+
+      <!-- 状态提示 -->
+      <div id="status-message" class="status-message" style="display: none;"></div>
+    </div>
+  </div>
+
+  <script src="../utils/api-client.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
