@@ -338,6 +338,18 @@ button:disabled {
   border: 1px solid #fbc4c4;
 }
 
+.status-message.warning {
+  background: #fdf6ec;
+  color: #e6a23c;
+  border: 1px solid #f5dab1;
+}
+
+.status-message.info {
+  background: #f4f4f5;
+  color: #909399;
+  border: 1px solid #d3d4d6;
+}
+
 /* 滚动条样式 */
 .folder-tree::-webkit-scrollbar {
   width: 6px;

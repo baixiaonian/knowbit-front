@@ -267,20 +267,67 @@ async function handleCollect() {
   btnLoading.style.display = 'inline-block';
   
   try {
-    // 构造文档内容
-    const content = `# ${currentPageInfo.title}
-
-**原文链接**: [${currentPageInfo.url}](${currentPageInfo.url})
-
-**收藏时间**: ${new Date().toLocaleString('zh-CN')}
-
----
-
-`;
+    // 显示进度提示
+    showStatus('正在解析网页内容...', 'info');
+    
+    // 调用网页解析接口获取纯净内容（使用HTML格式，适配tiptap编辑器）
+    let articleContent = '';
+    let metadata = null;
+    
+    try {
+      const scrapeResponse = await apiClient.scrapeWebPage(currentPageInfo.url, ['html']);
+      
+      if (scrapeResponse.success && scrapeResponse.data) {
+        articleContent = scrapeResponse.data.html || '';
+        metadata = scrapeResponse.data.metadata || null;
+        console.log('网页解析成功:', metadata);
+      } else {
+        console.warn('网页解析失败:', scrapeResponse.error);
+        showStatus('网页解析失败，将仅保存链接', 'warning');
+      }
+    } catch (scrapeError) {
+      console.error('网页解析异常:', scrapeError);
+      showStatus('网页解析失败，将仅保存链接', 'warning');
+    }
+    
+    // 更新进度提示
+    showStatus('正在创建文档...', 'info');
+    
+    // 构造文档内容（使用HTML格式，适配tiptap编辑器）
+    let content = '';
+    
+    // 如果有解析到的内容，使用解析结果
+    if (articleContent) {
+      // 使用解析的元数据作为文档标题（如果有）
+      const docTitle = metadata?.title || currentPageInfo.title;
+      
+      // 构建HTML格式的文档内容
+      content = `<h1>${docTitle}</h1>`;
+      
+      // 添加元信息
+      content += `<p><strong>原文链接</strong>: <a href="${currentPageInfo.url}" target="_blank">${currentPageInfo.url}</a></p>`;
+      
+      if (metadata?.description) {
+        content += `<p><strong>摘要</strong>: ${metadata.description}</p>`;
+      }
+      
+      if (metadata?.keywords) {
+        content += `<p><strong>关键词</strong>: ${metadata.keywords}</p>`;
+      }
+      
+      content += `<p><strong>收藏时间</strong>: ${new Date().toLocaleString('zh-CN')}</p>`;
+      content += `<hr>`;
+      
+      // 添加文章内容（已经是HTML格式）
+      content += articleContent;
+    } else {
+      // 如果解析失败，使用原来的简单格式（HTML格式）
+      content = `<h1>${currentPageInfo.title}</h1><p><strong>原文链接</strong>: <a href="${currentPageInfo.url}" target="_blank">${currentPageInfo.url}</a></p><p><strong>收藏时间</strong>: ${new Date().toLocaleString('zh-CN')}</p><hr>`;
+    }
     
     // 创建文档
     const documentData = {
-      title: currentPageInfo.title,
+      title: metadata?.title || currentPageInfo.title,
       content: content,
       folderId: selectedFolderId,
       status: 1, // 草稿状态
@@ -292,7 +339,7 @@ async function handleCollect() {
     if (response.code === 200) {
       showStatus('收藏成功！', 'success');
       
-      // 3秒后关闭弹窗
+      // 2秒后关闭弹窗
       setTimeout(() => {
         window.close();
       }, 2000);

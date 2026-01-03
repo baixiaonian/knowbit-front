@@ -6,8 +6,11 @@
 
 - ✅ 一键收藏当前网页
 - ✅ 自动提取网页标题和链接
+- ✅ **智能解析网页内容，提取纯净文章**
+- ✅ **自动获取文章元数据（标题、摘要、关键词）**
 - ✅ 支持选择目标文件夹
 - ✅ 自动创建笔记文档
+- ✅ 容错处理，解析失败时仅保存链接
 
 ## 目录结构
 
@@ -81,15 +84,34 @@ browser-extension/
 
 收藏后创建的文档格式如下：
 
-```markdown
-# [网页标题]
+**成功解析网页时：**
 
-**原文链接**: [网页URL](网页URL)
+```html
+<h1>[文章标题]</h1>
 
-**收藏时间**: 2026-01-02 13:55:15
+<p><strong>原文链接</strong>: <a href="URL" target="_blank">URL</a></p>
 
----
+<p><strong>摘要</strong>: 文章摘要内容</p>
 
+<p><strong>关键词</strong>: 关键词1,关键词2,关键词3</p>
+
+<p><strong>收藏时间</strong>: 2026-01-03 13:55:15</p>
+
+<hr>
+
+[纯净的文章内容，HTML格式，直接适配tiptap编辑器]
+```
+
+**解析失败时的退化方案：**
+
+```html
+<h1>[网页标题]</h1>
+
+<p><strong>原文链接</strong>: <a href="URL" target="_blank">URL</a></p>
+
+<p><strong>收藏时间</strong>: 2026-01-03 13:55:15</p>
+
+<hr>
 ```
 
 ## API接口
@@ -99,6 +121,7 @@ browser-extension/
 - `POST /auth/wechat/verify` - 微信登录验证
 - `GET /api/knowledge-base` - 获取知识库结构
 - `POST /api/documents` - 创建文档
+- **`POST /api/scraper/scrape` - 抓取网页内容（新增）**
 
 ## 权限说明
 
@@ -138,8 +161,8 @@ browser-extension/
 
 ## 开发计划
 
-- [ ] 支持网页内容自动解析
-- [ ] 支持Markdown格式转换
+- [x] 支持网页内容自动解析
+- [x] 支持HTML格式转换（适配tiptap编辑器）
 - [ ] 支持图片上传
 - [ ] 支持快捷键操作
 - [ ] 支持批量收藏

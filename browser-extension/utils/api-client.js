@@ -134,6 +134,17 @@ class APIClient {
     });
   }
 
+  // 抓取网页内容
+  async scrapeWebPage(url, formats = ['markdown', 'html']) {
+    return await this.request('/scraper/scrape', {
+      method: 'POST',
+      body: {
+        url: url,
+        formats: formats
+      }
+    });
+  }
+
   // 检查登录状态
   async checkAuth() {
     const token = await this.getToken();
