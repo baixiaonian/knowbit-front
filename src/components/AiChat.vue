@@ -245,15 +245,25 @@
     </div>
 
     <!-- 输入区域 -->
-    <div class="chat-input-area">
+    <div class="chat-input-area" ref="inputArea">
       <div class="unified-input-box">
         <div class="input-first-row">
-          <button class="add-context-btn" @click="showDocumentSelector" title="添加文档上下文">
+          <button class="add-context-btn" @click="handleShowDocumentSelector" title="添加文档上下文" ref="addBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
           </button>
+          <!-- 显示已选择的文档数量 -->
+          <div v-if="selectedDocumentIds.length > 0" class="selected-documents-info">
+            <span class="selected-count">已选择 {{ selectedDocumentIds.length }} 个文档</span>
+            <button class="clear-selection-btn" @click="selectedDocumentIds = []" title="清除选择">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="input-main-area">
           <textarea
@@ -285,6 +295,15 @@
           <span class="char-count">{{ currentMessage.length }}/2000</span>
         </div>
       </div>
+      
+      <!-- 文档选择器下拉面板 -->
+      <DocumentSelector 
+        v-if="showDocumentSelector"
+        :show="showDocumentSelector"
+        :initial-selected-ids="selectedDocumentIds"
+        @close="handleCloseDocumentSelector"
+        @confirm="handleConfirmDocumentSelection"
+      />
     </div>
   </div>
 </template>
@@ -293,6 +312,7 @@
 import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { aiAPI, agentAPI } from '../services/api.js'
 import { formatMarkdownToHtml } from '../utils/markdownFormatter.js'
+import DocumentSelector from './DocumentSelector.vue'
 
 // Props
 const props = defineProps({
@@ -342,6 +362,12 @@ const references = ref([]) // 引用文本列表
 // 调试相关数据
 const showDebugPanel = ref(false) // 是否显示调试面板
 const debugMessages = ref([]) // 调试消息列表
+
+// 文档选择器相关数据
+const showDocumentSelector = ref(false) // 是否显示文档选择器
+const selectedDocumentIds = ref([]) // 选中的文档ID列表
+const inputArea = ref(null) // 输入区域引用
+const addBtn = ref(null) // 添加按钮引用
 
 // 获取当前会话标题
 const getCurrentSessionTitle = () => {
@@ -438,7 +464,7 @@ const callAgentAPI = async (userPrompt) => {
       userPrompt,
       props.documentId,
       agentSessionId.value, // 复用会话 ID，后端会使用该会话的历史消息
-      undefined, // selectedDocumentIds
+      selectedDocumentIds.value.length > 0 ? selectedDocumentIds.value : undefined, // 选中的文档ID列表
       targetSelection
     )
     
@@ -999,10 +1025,39 @@ const handleModeChange = () => {
 }
 
 // 显示文档选择器
-const showDocumentSelector = () => {
+const handleShowDocumentSelector = () => {
   console.log('打开文档选择器')
-  // TODO: 实现文档选择器对话框
-  alert('文档选择器功能待实现')
+  showDocumentSelector.value = true
+  
+  // 添加点击外部关闭的事件监听
+  nextTick(() => {
+    document.addEventListener('click', handleClickOutside)
+  })
+}
+
+// 关闭文档选择器
+const handleCloseDocumentSelector = () => {
+  showDocumentSelector.value = false
+  document.removeEventListener('click', handleClickOutside)
+}
+
+// 点击外部关闭
+const handleClickOutside = (event) => {
+  if (!inputArea.value) return
+  
+  // 如果点击的是输入区域内部，则不关闭
+  if (inputArea.value.contains(event.target)) {
+    return
+  }
+  
+  // 否则关闭选择器
+  handleCloseDocumentSelector()
+}
+
+// 确认选择文档（点击选择框时实时更新）
+const handleConfirmDocumentSelection = (documentIds) => {
+  console.log('更新选中的文档ID:', documentIds)
+  selectedDocumentIds.value = documentIds
 }
 
 const formatSessionTime = (timestamp) => {
@@ -1135,6 +1190,9 @@ onUnmounted(() => {
     agentWebSocket.value.close()
     agentWebSocket.value = null
   }
+  
+  // 移除点击外部关闭的事件监听
+  document.removeEventListener('click', handleClickOutside)
 })
 
 const handleAddReferenceToChat = (event) => {
@@ -1617,6 +1675,7 @@ const formatDebugTime = (timestamp) => {
   background: #fafafa;
   flex-shrink: 0;
   padding: 12px 16px;
+  position: relative;
 }
 
 /* 统一输入框 */
@@ -1638,6 +1697,7 @@ const formatDebugTime = (timestamp) => {
   align-items: center;
   padding: 8px 12px 0 12px;
   min-height: 36px;
+  gap: 8px;
 }
 
 .add-context-btn {
@@ -1653,11 +1713,49 @@ const formatDebugTime = (timestamp) => {
   cursor: pointer;
   transition: all 0.2s;
   padding: 0;
+  flex-shrink: 0;
 }
 
 .add-context-btn:hover {
   background: #f5f7fa;
   color: #409eff;
+}
+
+.selected-documents-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #ecf5ff;
+  border-radius: 12px;
+  border: 1px solid #b3d8ff;
+}
+
+.selected-count {
+  font-size: 12px;
+  color: #409eff;
+  font-weight: 500;
+}
+
+.clear-selection-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: #909399;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.clear-selection-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #f56c6c;
 }
 
 /* 主输入区域 */
