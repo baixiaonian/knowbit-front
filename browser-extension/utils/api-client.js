@@ -1,9 +1,11 @@
 // API客户端 - 与后端接口通信
 const API_BASE_URL = 'https://api.knowbit.cn/api';
+const AUTH_BASE_URL = 'https://api.knowbit.cn/auth';
 
 class APIClient {
   constructor() {
     this.token = null;
+    this.userInfo = null;
   }
 
   // 从storage中获取token
@@ -15,16 +17,53 @@ class APIClient {
     return this.token;
   }
 
-  // 设置token
-  async setToken(token) {
+  // 设置token和用户信息
+  async setToken(token, userInfo = null) {
     this.token = token;
     await chrome.storage.local.set({ auth_token: token });
+    
+    if (userInfo) {
+      this.userInfo = userInfo;
+      await chrome.storage.local.set({ user_info: JSON.stringify(userInfo) });
+    }
   }
 
-  // 清除token
+  // 清除token和用户信息
   async clearToken() {
     this.token = null;
-    await chrome.storage.local.remove('auth_token');
+    this.userInfo = null;
+    await chrome.storage.local.remove(['auth_token', 'user_info']);
+  }
+
+  // 微信登录验证
+  async wechatVerify(code) {
+    try {
+      const response = await fetch(`${AUTH_BASE_URL}/wechat/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code })
+      });
+      
+      // 检查响应状态
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // 验证成功后保存token和用户信息
+      if (data.code === 200 && data.data && data.data.token) {
+        await this.setToken(data.data.token, data.data.user);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Wechat verify error:', error);
+      throw error;
+    }
   }
 
   // 通用请求方法

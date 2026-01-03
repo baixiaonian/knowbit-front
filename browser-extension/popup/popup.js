@@ -6,6 +6,7 @@ let currentPageInfo = {
 
 let selectedFolderId = null;
 let knowledgeBase = null;
+let verificationCode = ''; // 验证码
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
@@ -145,45 +146,107 @@ function selectFolder(folderId) {
 
 // 绑定事件
 function bindEvents() {
+  // 验证码输入框
+  const codeInput = document.getElementById('verification-code');
+  if (codeInput) {
+    codeInput.addEventListener('input', handleCodeInput);
+    codeInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && verificationCode.length === 6) {
+        handleLogin();
+      }
+    });
+    // 自动聚焦
+    codeInput.focus();
+  }
+  
   // 登录按钮
-  document.getElementById('login-btn').addEventListener('click', handleLogin);
+  const loginBtn = document.getElementById('login-btn');
+  if (loginBtn) {
+    loginBtn.addEventListener('click', handleLogin);
+  }
   
   // 收藏按钮
-  document.getElementById('collect-btn').addEventListener('click', handleCollect);
+  const collectBtn = document.getElementById('collect-btn');
+  if (collectBtn) {
+    collectBtn.addEventListener('click', handleCollect);
+  }
   
   // 退出登录按钮
-  document.getElementById('logout-btn').addEventListener('click', handleLogout);
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', handleLogout);
+  }
+}
+
+// 处理验证码输入
+function handleCodeInput(e) {
+  const input = e.target;
+  verificationCode = input.value.trim();
   
-  // Token输入框回车
-  document.getElementById('token-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      handleLogin();
-    }
-  });
+  // 启用/禁用登录按钮
+  const loginBtn = document.getElementById('login-btn');
+  loginBtn.disabled = verificationCode.length !== 6;
+  
+  // 清除错误消息
+  hideError();
+}
+
+// 显示错误消息
+function showError(message) {
+  const errorDiv = document.getElementById('error-message');
+  if (errorDiv) {
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+  }
+}
+
+// 隐藏错误消息
+function hideError() {
+  const errorDiv = document.getElementById('error-message');
+  if (errorDiv) {
+    errorDiv.style.display = 'none';
+  }
 }
 
 // 处理登录
 async function handleLogin() {
-  const tokenInput = document.getElementById('token-input');
-  const token = tokenInput.value.trim();
-  
-  if (!token) {
-    alert('请输入Token');
+  if (verificationCode.length !== 6) {
+    showError('请输入6位验证码');
     return;
   }
   
+  const loginBtn = document.getElementById('login-btn');
+  const btnText = loginBtn.querySelector('.btn-text');
+  const btnLoading = loginBtn.querySelector('.btn-loading');
+  
+  // 禁用按钮，显示加载状态
+  loginBtn.disabled = true;
+  btnText.style.display = 'none';
+  btnLoading.style.display = 'inline-block';
+  hideError();
+  
   try {
-    await apiClient.setToken(token);
+    console.log('Verifying code:', verificationCode);
+    const response = await apiClient.wechatVerify(verificationCode);
     
-    // 测试token是否有效
-    await apiClient.getKnowledgeBase();
+    console.log('Login response:', response);
     
-    // 登录成功
-    showLoggedInView();
-    await loadKnowledgeBase();
+    if (response.code === 200) {
+      // 登录成功
+      console.log('Login successful, user info:', response.data.user);
+      showLoggedInView();
+      await loadKnowledgeBase();
+    } else {
+      showError(response.message || '验证失败，请重试');
+    }
   } catch (error) {
-    alert('登录失败: ' + error.message);
-    await apiClient.clearToken();
+    console.error('Login error:', error);
+    showError(error.message || '验证码无效或已过期');
+  } finally {
+    // 恢复按钮状态
+    loginBtn.disabled = verificationCode.length !== 6;
+    btnText.style.display = 'inline-block';
+    btnLoading.style.display = 'none';
   }
 }
 
@@ -253,7 +316,14 @@ async function handleLogout() {
     await apiClient.clearToken();
     selectedFolderId = null;
     knowledgeBase = null;
-    document.getElementById('token-input').value = '';
+    verificationCode = '';
+    
+    // 重置验证码输入框
+    const codeInput = document.getElementById('verification-code');
+    if (codeInput) {
+      codeInput.value = '';
+    }
+    
     showNotLoggedInView();
   }
 }

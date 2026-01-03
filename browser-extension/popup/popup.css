@@ -40,7 +40,6 @@ body {
   background: white;
   border-radius: 8px;
   padding: 20px;
-  text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
@@ -49,28 +48,130 @@ body {
   color: #666;
 }
 
-#token-input {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
+/* 二维码区域 */
+.qr-code-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fafbfc;
+  border-radius: 8px;
+  text-align: center;
+  border: 1px solid #f0f1f3;
+}
+
+.qr-code-container {
   margin-bottom: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.qr-code-image {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.instruction {
   font-size: 14px;
+  color: #1f2937;
+  margin-bottom: 6px;
 }
 
-#token-input:focus {
-  outline: none;
-  border-color: #667eea;
+.instruction strong {
+  color: #667eea;
 }
 
-.tips {
-  margin-top: 12px;
+.hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.code-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 12px;
+}
+
+/* 表单组 */
+.form-group {
+  margin-bottom: 16px;
   text-align: left;
 }
 
-.tips small {
-  color: #909399;
-  line-height: 1.5;
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.code-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  text-align: center;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s;
+  font-family: 'Courier New', monospace;
+}
+
+.code-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.code-input:disabled {
+  background-color: #f3f4f6;
+  cursor: not-allowed;
+}
+
+/* 错误消息 */
+.error-message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 12px;
+  text-align: left;
+}
+
+/* 底部说明 */
+.footer-note {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.footer-note p {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 4px 0;
+}
+
+.footer-note .small {
+  font-size: 11px;
+  color: #9ca3af;
 }
 
 /* 页面信息 */
